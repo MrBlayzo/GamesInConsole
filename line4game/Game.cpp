@@ -68,6 +68,17 @@ void Board::draw(int cursor)
     }
 }
 
+bool Board::try_add_piece(int cursor, Participant p)
+{
+    if (board[0][cursor] != Participant::none)
+        return false;
+    int row = 0;
+    while(row<height && board[row][cursor] == Participant::none)
+        ++row;
+    board[row - 1][cursor] = p;
+    return true;
+}
+
 Line4Game::Line4Game(int width, int height)
     : board(width, height),
       player1(std::make_unique<PeoplePlayer>()),
@@ -111,5 +122,10 @@ Participant Line4Game::check_diag2_win() { return Participant::none; }
 
 void PeoplePlayer::move(Board &board)
 {
-    cursor = board.get_new_cursor_pos(cursor);
+    bool valid_move = false;
+    while(!valid_move){
+        cursor = board.get_new_cursor_pos(cursor);
+        valid_move = board.try_add_piece(cursor, Participant::player1);
+    }
+    
 }

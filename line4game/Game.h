@@ -30,6 +30,7 @@ public:
     Board(int width, int height);
     void draw(int cursor);
     int get_new_cursor_pos(int cursor);
+    bool try_add_piece(int cursor, Participant p);
 
 private:
     int width;
