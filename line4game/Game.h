@@ -31,12 +31,19 @@ public:
     void draw(int cursor);
     int get_new_cursor_pos(int cursor);
     bool try_add_piece(int cursor, Participant p);
+    void set_winner(Participant p);
+
+    Participant check_row_win();
+    Participant check_col_win();
+    Participant check_diag1_win();
+    Participant check_diag2_win();
 
 private:
     int width;
     int height;
     ConsoleEngine engine;
     std::vector<std::vector<Participant>> board;
+    Participant check_win_for_current_pos(Participant &prev, Participant &curr, int &player1_count, int &player2_count);
 };
 
 class Player
@@ -86,8 +93,4 @@ private:
     std::unique_ptr<Player> player2;
 
     Participant check_win();
-    Participant check_row_win();
-    Participant check_col_win();
-    Participant check_diag1_win();
-    Participant check_diag2_win();
 };
