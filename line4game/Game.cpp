@@ -326,8 +326,7 @@ HumanPlayer::HumanPlayer(Participant p) : Player(p) {}
 ComputerPlayer::ComputerPlayer(Participant p, ComputeParams params)
     : Player(p), compute_params(params)
 {
-    if (compute_params.move_type == MoveTypes::random)
-        std::srand(std::time(nullptr));
+    std::srand(std::time(nullptr));
 }
 
 void HumanPlayer::move(Board &board)
