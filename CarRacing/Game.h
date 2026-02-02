@@ -1,64 +1,56 @@
 #pragma once
-#include <vector>
-#include <list>
 #include <array>
-#include <concepts>
-#include <random>
 #include <chrono>
+#include <concepts>
+#include <list>
+#include <random>
+#include <vector>
+
 #include "ConsoleEngine.h"
 
 class SpriteRepository {
-public:
+  public:
     static constexpr int width = 3;
     static constexpr int height = 4;
     using Sprite = std::array<std::array<char, width>, height>;
     static const Sprite& get_player() {
-        static const Sprite sprite = {{
-            {{'.', '0', '.'}},
-            {{'0', '0', '0'}},
-            {{'.', '0', '.'}},
-            {{'0', '0', '0'}}
-        }};
+        static const Sprite sprite = {{{{'.', '0', '.'}},
+                                       {{'0', '0', '0'}},
+                                       {{'.', '0', '.'}},
+                                       {{'0', '0', '0'}}}};
         return sprite;
     }
 
     static const Sprite& get_car() {
-        static const Sprite sprite = {{
-            {{'C', 'C', 'C'}},
-            {{'C', ' ', 'C'}},
-            {{'C', 'C', 'C'}},
-            {{'.', '.', '.'}}
-        }};
+        static const Sprite sprite = {{{{'C', 'C', 'C'}},
+                                       {{'C', ' ', 'C'}},
+                                       {{'C', 'C', 'C'}},
+                                       {{'.', '.', '.'}}}};
         return sprite;
     }
 
     static const Sprite& get_broken_player() {
-        static const Sprite sprite = {{
-            {{' ', '&', ' '}},
-            {{'&', '0', '&'}},
-            {{' ', '0', ' '}},
-            {{'&', '0', '&'}}
-        }};
+        static const Sprite sprite = {{{{' ', '&', ' '}},
+                                       {{'&', '0', '&'}},
+                                       {{' ', '0', ' '}},
+                                       {{'&', '0', '&'}}}};
         return sprite;
     }
 
     static const Sprite& get_truck() {
-        static const Sprite sprite = {{
-            {{'T', 'T', 'T'}},
-            {{'T', ' ', 'T'}},
-            {{'T', 'T', 'T'}},
-            {{'T', ' ', 'T'}}
-        }};
+        static const Sprite sprite = {{{{'T', 'T', 'T'}},
+                                       {{'T', ' ', 'T'}},
+                                       {{'T', 'T', 'T'}},
+                                       {{'T', ' ', 'T'}}}};
         return sprite;
     }
 
-private:
+  private:
     SpriteRepository() = delete;
 };
 
-class Object
-{
-public:
+class Object {
+  public:
     static constexpr int width = 3;
     static constexpr int height = 4;
 
@@ -74,57 +66,55 @@ public:
     int get_pos_y();
     int get_relative_speed();
     void set_relative_speed(int new_speed);
-protected:
+
+  protected:
     int pos_x;
     int pos_y;
     int relative_speed;
 };
-class Player: public Object
-{
-public:
+class Player : public Object {
+  public:
     static constexpr int width = 3;
     static constexpr int height = 4;
 
-    Player(int pos_x, int pos_y, int relative_speed=0);
+    Player(int pos_x, int pos_y, int relative_speed = 0);
     ~Player();
     const SpriteRepository::Sprite& get_sprite() override;
     void set_pos_x(int new_pos);
 
-private:
+  private:
 };
-class Car: public Object
-{
-public:
+class Car : public Object {
+  public:
     static constexpr int width = 3;
     static constexpr int height = 3;
 
-    Car(int pos_x, int pos_y, int relative_speed=1);
+    Car(int pos_x, int pos_y, int relative_speed = 1);
     ~Car();
     const SpriteRepository::Sprite& get_sprite() override;
 
-private:
+  private:
 };
-class Truck: public Object
-{
-public:
+class Truck : public Object {
+  public:
     static constexpr int width = 3;
     static constexpr int height = 4;
 
-    Truck(int pos_x, int pos_y, int relative_speed=2);
+    Truck(int pos_x, int pos_y, int relative_speed = 2);
     ~Truck();
     const SpriteRepository::Sprite& get_sprite() override;
 
-private:
+  private:
 };
 
-class Road{
-public:
-    static constexpr int width = 5*SpriteRepository::width;
-    static constexpr int height = 5*SpriteRepository::height;
+class Road {
+  public:
+    static constexpr int width = 5 * SpriteRepository::width;
+    static constexpr int height = 5 * SpriteRepository::height;
     Road();
     template <typename T>
         requires std::derived_from<T, Object>
-    void add_object(int pos_x, int pos_y){
+    void add_object(int pos_x, int pos_y) {
         objects.push_back(std::make_unique<T>(pos_x, pos_y));
     }
     bool update();
@@ -138,39 +128,41 @@ public:
     void set_max_dist(int new_max_dist);
 
     Player player;
-private:
+
+  private:
     ConsoleEngine engine;
     std::list<std::unique_ptr<Object>> objects;
     std::array<std::string, height> road;
     int dist;
     int max_dist;
-
 };
 
-class CarGenerator{
-public:
-    static void generate(Road &road);
+class CarGenerator {
+  public:
+    static void generate(Road& road);
 
-private:
+  private:
     static std::random_device rd;
     static std::mt19937 gen;
     static std::uniform_int_distribution<int> dist;
 };
 
-class CarRacing{
-public:
+class CarRacing {
+  public:
     CarRacing();
     ~CarRacing();
     void play();
     void save_high_score();
     int load_high_score();
-private:
+
+  private:
     static constexpr int max_x_move = 3;
     Road road;
     bool is_running;
 
     ConsoleEngine engine;
-    const std::chrono::milliseconds FRAME_DURATION = std::chrono::milliseconds(250);
+    const std::chrono::milliseconds FRAME_DURATION =
+        std::chrono::milliseconds(250);
     const std::string highscore_filename = "highscore.txt";
 
     void get_player_commands();

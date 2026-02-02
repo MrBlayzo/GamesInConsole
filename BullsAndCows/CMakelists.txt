@@ -4,8 +4,9 @@ project(BullsAndCows LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_subdirectory(ConsoleEngine)
+get_filename_component(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../common" ABSOLUTE)
+add_subdirectory(${COMMON_DIR}/ConsoleEngine ConsoleEngine)
 
-add_executable(main main.cpp Game.cpp)
+add_executable(BullsAndCows main.cpp Game.cpp)
 
-target_link_libraries(main PRIVATE ConsoleEngine)
+target_link_libraries(BullsAndCows PRIVATE ConsoleEngine)

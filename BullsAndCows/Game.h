@@ -1,47 +1,42 @@
 #pragma once
 #include <memory>
-#include <vector>
 #include <random>
 #include <unordered_set>
+#include <vector>
+
 #include "ConsoleEngine.h"
 
-enum class NumType
-{
-    Bull,
-    Cow,
-    None
-};
+enum class NumType { Bull, Cow, None };
 
-enum class GeneratorType
-{
+enum class GeneratorType {
     RepeatableDigits,
     UniqueDigits,
 };
 
-class NumGenerator{
-public:
+class NumGenerator {
+  public:
     virtual ~NumGenerator() = default;
     virtual std::string generate(int number_length) = 0;
 
-protected:
+  protected:
     std::random_device rd;
     std::mt19937 gen{rd()};
 };
 
-class RepeatableGenerator: public NumGenerator{
-public:
+class RepeatableGenerator : public NumGenerator {
+  public:
     std::string generate(int number_length) override;
 };
 
-class UniqueGenerator: public NumGenerator{
-public:
+class UniqueGenerator : public NumGenerator {
+  public:
     std::string generate(int number_length) override;
 };
 
-class TargetNum
-{
-public:
-    TargetNum(int number_length, GeneratorType type = GeneratorType::UniqueDigits);
+class TargetNum {
+  public:
+    TargetNum(int number_length,
+              GeneratorType type = GeneratorType::UniqueDigits);
     void generate(int number_length);
     std::string get();
     NumType get_num_type(char c, int pos);
@@ -49,27 +44,25 @@ public:
     bool is_same_length(std::string s);
     int length();
 
-private:
+  private:
     std::string target;
     std::unordered_set<char> digits;
     std::unique_ptr<NumGenerator> generator;
 };
 
-struct GameParams
-{
+struct GameParams {
     int number_length = 4;
     int number_of_try = 6;
     GeneratorType gen_type = GeneratorType::UniqueDigits;
     bool hide_previous = true;
 };
 
-class BullsAndCows
-{
-public:
+class BullsAndCows {
+  public:
     BullsAndCows(GameParams params = GameParams{});
     void play();
 
-private:
+  private:
     TargetNum target;
     GameParams params;
     ConsoleEngine engine;

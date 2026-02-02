@@ -1,21 +1,20 @@
 #pragma once
-#include <string>
 #include <iostream>
+#include <string>
 
 #ifdef _WIN32
 #define NOMINMAX
-#include <windows.h>
 #include <conio.h>
+#include <windows.h>
 inline bool uni_kbhit() { return _kbhit() != 0; }
 inline char uni_getch() { return _getch(); }
 #else
+#include <stdio.h>
 #include <sys/select.h>
 #include <termios.h>
 #include <unistd.h>
-#include <stdio.h>
 
-inline bool uni_kbhit()
-{
+inline bool uni_kbhit() {
     int ch = -1;
     struct termios old_termios, new_termios;
     tcgetattr(STDIN_FILENO, &old_termios);
@@ -25,19 +24,17 @@ inline bool uni_kbhit()
     fd_set read_fds;
     FD_ZERO(&read_fds);
     FD_SET(STDIN_FILENO, &read_fds);
-    struct timeval timeout = {0, 0}; // неблокирующий
+    struct timeval timeout = {0, 0};  // неблокирующий
     int ready = select(STDIN_FILENO + 1, &read_fds, nullptr, nullptr, &timeout);
-    if (ready > 0 && FD_ISSET(STDIN_FILENO, &read_fds))
-    {
+    if (ready > 0 && FD_ISSET(STDIN_FILENO, &read_fds)) {
         ch = getchar();
-        ungetc(ch, stdin); // вернуть символ обратно
+        ungetc(ch, stdin);  // вернуть символ обратно
     }
     tcsetattr(STDIN_FILENO, TCSANOW, &old_termios);
     return ch != -1;
 }
 
-inline char uni_getch()
-{
+inline char uni_getch() {
     struct termios old_termios, new_termios;
     tcgetattr(STDIN_FILENO, &old_termios);
     new_termios = old_termios;
@@ -48,14 +45,13 @@ inline char uni_getch()
     return ch;
 }
 #endif
-enum class ConsoleStyle
-{
+
+enum class ConsoleStyle {
     Reset = 0,
     Bold = 1,
     Underline = 4,
 };
-enum class ConsoleTextColors
-{
+enum class ConsoleTextColors {
     Black = 30,
     Red = 31,
     Green = 32,
@@ -65,8 +61,7 @@ enum class ConsoleTextColors
     Cyan = 36,
     White = 37,
 };
-enum class ConsoleBkgColors
-{
+enum class ConsoleBkgColors {
     Black = 40,
     Red = 41,
     Green = 42,
@@ -77,36 +72,32 @@ enum class ConsoleBkgColors
     White = 47,
 };
 
-class ConsoleEngine
-{
-public:
+class ConsoleEngine {
+  public:
     ConsoleEngine();
+    ConsoleEngine(std::istream& in, std::ostream& out);
     ~ConsoleEngine();
     void clear();
     void set_cursor_to_zero();
     template <typename... Args>
-    void print(Args... args)
-    {
-        ((std::cout << args), ...);
+    void print(Args... args) {
+        ((cout_ << args), ...);
     };
     template <typename... Args>
-    void print_color(ConsoleTextColors text_color, ConsoleBkgColors background_color, Args... args)
-    {
-        set_color(text_color);
-        set_color(background_color);
+    void print_color(ConsoleTextColors text_color,
+                     ConsoleBkgColors background_color, Args... args) {
+        set_color(text_color, background_color);
         print(args...);
         reset_styles();
     };
     template <typename... Args>
-    void print_color(ConsoleTextColors text_color, Args... args)
-    {
+    void print_color(ConsoleTextColors text_color, Args... args) {
         set_color(text_color);
         print(args...);
         reset_styles();
     };
     template <typename... Args>
-    void print_color(ConsoleBkgColors background_color, Args... args)
-    {
+    void print_color(ConsoleBkgColors background_color, Args... args) {
         set_color(background_color);
         print(args...);
         reset_styles();
@@ -115,11 +106,16 @@ public:
     void set_style(ConsoleStyle style);
     void set_color(ConsoleTextColors text_color);
     void set_color(ConsoleBkgColors background_color);
+    void set_color(ConsoleTextColors text_color,
+                   ConsoleBkgColors background_color);
     std::string get();
     char get_no_wait();
     bool key_pressed(char key);
 
-private:
+  private:
+    std::istream& cin_;
+    std::ostream& cout_;
+
     void flush_input_buffer();
     void enableAnsiColors();
 };

@@ -1,0 +1,15 @@
+add_executable(ConsoleEngineTests
+    test_console_engine.cpp
+)
+
+target_link_libraries(ConsoleEngineTests PRIVATE
+    ConsoleEngine
+    GTest::gtest
+    GTest::gtest_main
+)
+
+include(GoogleTest)
+gtest_add_tests(
+    TARGET ConsoleEngineTests
+    TEST_LIST all_tests
+)
