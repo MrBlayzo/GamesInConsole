@@ -97,7 +97,7 @@ namespace Colors256{
     constexpr Color256 GrayBrown{101};
     constexpr Color256 LightBrown{136};
     constexpr Color256 OrangeBrown{130};
-    constexpr Color256 Purple{35};
+    constexpr Color256 Purple{92};
 }
 
 class ConsoleEngine {

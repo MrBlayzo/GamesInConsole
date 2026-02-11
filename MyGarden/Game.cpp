@@ -21,7 +21,7 @@ void Cell::draw(ConsoleEngine& engine) {
 }
 
 Map::Map(int width, int height)
-    : width(width), height(height), engine(), cursor_pos(0, 0), player() {
+    : width(width), height(height), engine(), player(*this) {
     engine.clear();
     engine.hide_cursor();
     map.resize(height);
@@ -31,7 +31,7 @@ Map::Map(int width, int height)
             map[y].emplace_back(x, y, std::make_unique<Ground>());
         }
     }
-    map[cursor_pos.y][cursor_pos.x].is_selected = true;
+    map[player.cursor_pos.y][player.cursor_pos.x].is_selected = true;
     generate();
     update();
 }
@@ -283,7 +283,6 @@ void Map::update() {
             }
         }
     }
-    engine.set_cursor_to_pos(cursor_pos.x, cursor_pos.y);
 }
 
 void Map::clear_path() {
@@ -302,178 +301,192 @@ void Map::draw_path() {
 }
 
 void Map::get_player_control() {
-    auto old_cursor_pos = cursor_pos;
+    auto old_cursor_pos = player.cursor_pos;
     auto c = engine.get_no_wait();
     while (c != '\0') {
         if (c == 'a') {
-            cursor_pos.x = std::max(0, cursor_pos.x - 1);
+            player.cursor_pos.x = std::max(0, player.cursor_pos.x - 1);
         } else if (c == 'd') {
-            cursor_pos.x = std::min(width - 1, cursor_pos.x + 1);
+            player.cursor_pos.x = std::min(width - 1, player.cursor_pos.x + 1);
         } else if (c == 'w') {
-            cursor_pos.y = std::max(0, cursor_pos.y - 1);
+            player.cursor_pos.y = std::max(0, player.cursor_pos.y - 1);
         } else if (c == 's') {
-            cursor_pos.y = std::min(height - 1, cursor_pos.y + 1);
+            player.cursor_pos.y = std::min(height - 1, player.cursor_pos.y + 1);
         } else if (c == 'f') {
-            clear_path();
-            player.walk_iteration = 0;
-            if (map[cursor_pos.y][cursor_pos.x].entity)
-                player.active_path = PathFinder::create_path_to_area(*this, player.pos,
-                                                              cursor_pos);
-            else
-                player.active_path = PathFinder::create_path_to_point(
-                    *this, player.pos, cursor_pos);
-            draw_path();
+            player.create_path();
         } else if (c == '\r') {
-            if (!map[cursor_pos.y][cursor_pos.x].entity) {
-                int chose = Menu::show_options_menu(
-                    engine, 20, 10, (width - 20) / 2, (height - 10) / 2,
-                    {"Move", "Place"});
-                redraw_all();
-                if (chose == 0) {
-                    clear_path();
-                    player.walk_iteration = 0;
-                    player.active_path = PathFinder::create_path_to_point(
-                        *this, player.pos, cursor_pos);
-                    draw_path();
-                }
-            } else {
-                int chose =
-                    Menu::show_options_menu(engine, 20, 10, (width - 20) / 2,
-                                            (height - 10) / 2, {"Move", "Dig"});
-                redraw_all();
-                if (chose == 0) {
-                    clear_path();
-                    player.walk_iteration = 0;
-                    player.active_path = PathFinder::create_path_to_area(
-                        *this, player.pos, cursor_pos);
-                    draw_path();
-                }
-            }
+            player.new_action();
         }
         c = engine.get_no_wait();
     }
-    if (old_cursor_pos != cursor_pos) {
+    if (old_cursor_pos != player.cursor_pos) {
         map[old_cursor_pos.y][old_cursor_pos.x].is_selected = false;
-        map[cursor_pos.y][cursor_pos.x].is_selected = true;
+        map[player.cursor_pos.y][player.cursor_pos.x].is_selected = true;
         redraw(old_cursor_pos.x, old_cursor_pos.y);
-        redraw(cursor_pos.x, cursor_pos.y);
+        redraw(player.cursor_pos.x, player.cursor_pos.y);
     }
 }
 
-std::optional<std::deque<Point>> PathFinder::create_path_to_point(Map& map,
-                                                                  Point start,
-                                                                  Point end) {
-    return PathFinder(map, start, end, [end](Point p) { return p == end; })
-        .find_path();
+double Map::get_passability(int x, int y) {
+    if (map[y][x].entity) return -1.0;
+    return map[y][x].terrain->get_passability();
 }
-std::optional<std::deque<Point>> PathFinder::create_path_to_area(Map& map,
-                                                                 Point start,
-                                                                 Point end) {
-    return PathFinder(
-               map, start, end,
-               [end](Point p) {
-                   return std::abs(p.x - end.x) + std::abs(p.y - end.y) == 1;
-               })
-        .find_path();
+double Map::get_passability(Point p) {
+    if (map[p.y][p.x].entity) return -1.0;
+    return map[p.y][p.x].terrain->get_passability();
 }
 
-PathFinder::PathFinder(Map& map, Point start, Point end,
-                       std::function<bool(Point)> is_target)
-    : map_(map),
-      start_(start),
-      end_(end),
-      points_(),
-      comparator_(points_),
-      pending_(comparator_),
-      is_target_(std::move(is_target)) {}
-
-std::optional<std::deque<Point>> PathFinder::find_path() {
-    points_[start_] = PathPoint(start_, start_, 0, dist_to_target(start_));
-    pending_.push(start_);
-
-    while (!pending_.empty()) {
-        auto current_pos = pending_.top();
-        pending_.pop();
-        if (is_target_(current_pos)) {
-            found_target_ = current_pos;
-            return convert_path();
-        }
-        explore_point(current_pos);
-    }
-
-    return std::nullopt;
+void Map::set_new_terrain(int x, int y,
+                          std::unique_ptr<TerrainObject> terrain) {
+    map[y][x].terrain = std::move(terrain);
+    redraw(x, y);
 }
-void PathFinder::explore_point(Point current_pos) {
-    auto& current = points_[current_pos];
-    if (current.calculated) return;
-    current.calculated = true;
-    for (auto& d : dirr) {
-        look_at_new({current_pos + d}, current_pos, current.cost);
-    }
+void Map::set_new_entity(int x, int y, std::unique_ptr<Object> entity) {
+    map[y][x].entity = std::move(entity);
+    redraw(x, y);
 }
-void PathFinder::look_at_new(Point new_pos, Point current_pos,
-                             double current_cost) {
-    if (new_pos.x < 0 || new_pos.x >= map_.width || new_pos.y < 0 ||
-        new_pos.y >= map_.height) {
-        return;
-    }
-    if (map_.get(new_pos.x, new_pos.y).terrain->get_passability() <= 0) {
-        return;
-    }
-    if (map_.get(new_pos.x, new_pos.y).entity) {
-        return;
-    }
-    if (points_.contains(new_pos) && points_[new_pos].calculated) {
-        return;
-    }
-
-    double new_cost = current_cost +
-                      map_.get(new_pos.x, new_pos.y).terrain->get_passability();
-
-    if (!points_.contains(new_pos) || new_cost < points_[new_pos].cost) {
-        points_[new_pos] =
-            PathPoint(new_pos, current_pos, new_cost, dist_to_target(new_pos));
-
-        pending_.push(new_pos);
-    }
+void Map::reset_entity(int x, int y) {
+    map[y][x].entity.reset();
+    redraw(x, y);
 }
-double PathFinder::dist_to_target(const Point& p) const {
-    return std::abs(end_.x - p.x) + std::abs(end_.y - p.y);
-}
+PlayerAction::PlayerAction(Map& map, Point pos)
+    : map(map), execute_iteration(0), is_executed(false), pos(pos) {}
+DigAction::DigAction(Map& map, Point pos) : PlayerAction(map, pos) {}
+PlaceAction::PlaceAction(Map& map, Point pos,
+                         std::unique_ptr<GrowingObject> new_object)
+    : PlayerAction(map, pos), new_object(std::move(new_object)) {}
+BuildAction::BuildAction(Map& map, Point pos,
+                         std::unique_ptr<TerrainObject> new_object)
+    : PlayerAction(map, pos), new_object(std::move(new_object)) {}
 
-std::deque<Point> PathFinder::convert_path() {
-    std::deque<Point> path;
-    auto current = found_target_.value();
-    while (current != start_) {
-        path.push_front(current);
-        current = points_[current].parent_pos;
-    }
-    return path;
+void PlayerAction::execute() {
+    if (is_executed) return;
+    if (++execute_iteration < get_execution_time()) return;
+    finish();
+    is_executed = true;
+}
+bool PlayerAction::executed() { return is_executed; }
+
+void DigAction::finish() {
+    map.reset_entity(pos.x, pos.y);
+    map.redraw(pos.x, pos.y);
+}
+void PlaceAction::finish() {
+    map.set_new_entity(pos.x, pos.y, std::move(new_object));
+    map.redraw(pos.x, pos.y);
+}
+void BuildAction::finish() {
+    map.set_new_terrain(pos.x, pos.y, std::move(new_object));
+    map.redraw(pos.x, pos.y);
 }
 
 void Map::player_move() {
-    if (!player.active_path.has_value()) return;
-    if (player.active_path.value().empty()) return;
-    auto next_point = player.active_path.value().front();
-    if (++player.walk_iteration <
-        map[next_point.y][next_point.x].terrain->get_passability())
-        return;
+    Point old_pos = player.pos;
+    if (!player.update()) return;
 
-    player.walk_iteration = 0;
-    player.active_path.value().pop_front();
-
-    map[player.pos.y][player.pos.x].entity.reset();
-    if (!dynamic_cast<Water*>(map[player.pos.y][player.pos.x].terrain.get())) {
-        map[player.pos.y][player.pos.x].terrain = std::make_unique<Path>();
+    map[old_pos.y][old_pos.x].entity.reset();
+    if (!dynamic_cast<Water*>(map[old_pos.y][old_pos.x].terrain.get()) &&
+        !dynamic_cast<Bridge*>(map[old_pos.y][old_pos.x].terrain.get())) {
+        map[old_pos.y][old_pos.x].terrain = std::make_unique<Path>();
     }
-    map[player.pos.y][player.pos.x].is_on_path = false;
-    redraw(player.pos.x, player.pos.y);
+    map[old_pos.y][old_pos.x].is_on_path = false;
+    redraw(old_pos.x, old_pos.y);
 
-    map[next_point.y][next_point.x].entity = std::make_unique<Gardener>();
-    redraw(next_point.x, next_point.y);
-    player.pos = next_point;
+    map[player.pos.y][player.pos.x].entity = std::make_unique<Gardener>();
+    redraw(player.pos.x, player.pos.y);
 }
 
+Player::Player(Map& map) : map(map), cursor_pos(0, 0) {}
+bool Player::update() {
+    if (active_path.has_value() && !active_path.value().empty()) {
+        auto next_point = active_path.value().front();
+        if (++walk_iteration < map.get_passability(next_point)) return false;
+
+        walk_iteration = 0;
+        active_path.value().pop_front();
+        pos = next_point;
+        return true;
+    }
+    if (active_action) {
+        active_action->execute();
+        if (active_action->executed()) {
+            active_action.reset();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void Player::create_path() {
+    map.clear_path();
+    walk_iteration = 0;
+
+    if (map.get(cursor_pos.x, cursor_pos.y).entity)
+        active_path = PathFinder::create_path_to_area(map, pos, cursor_pos);
+    else
+        active_path = PathFinder::create_path_to_point(map, pos, cursor_pos);
+
+    map.draw_path();
+}
+
+void Player::create_path_to_area() {
+    map.clear_path();
+    walk_iteration = 0;
+
+    active_path = PathFinder::create_path_to_area(map, pos, cursor_pos);
+
+    map.draw_path();
+}
+
+void Player::new_action() {
+    if (!map.get(cursor_pos.x, cursor_pos.y).entity ||
+        dynamic_cast<Gardener*>(
+            map.get(cursor_pos.x, cursor_pos.y).entity.get())) {
+        int chose = Menu::show_options_menu(
+            map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
+            {"Move", "Place", "Build"});
+        map.redraw_all();
+        if (chose == 0) {
+            create_path();
+        } else if (chose == 1) {
+            int chose_object = Menu::show_options_menu(
+                map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
+                {"Flower", "Tree"});
+            map.redraw_all();
+            create_path_to_area();
+            if (chose_object == 0)
+                active_action = std::make_unique<PlaceAction>(
+                    map, cursor_pos, std::make_unique<Flower>());
+            else if (chose_object == 1)
+                active_action = std::make_unique<PlaceAction>(
+                    map, cursor_pos, std::make_unique<Tree>());
+        } else if (chose == 2) {
+            int chose_object = Menu::show_options_menu(
+                map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
+                {"Bridge", "House"});  // TODO: мосты на земле и дома в реках
+            map.redraw_all();
+            create_path_to_area();
+            if (chose_object == 0)
+                active_action = std::make_unique<BuildAction>(
+                    map, cursor_pos, std::make_unique<Bridge>());
+            else if (chose_object == 1)
+                active_action = std::make_unique<BuildAction>(
+                    map, cursor_pos, std::make_unique<House>());
+        }
+    } else {
+        int chose =
+            Menu::show_options_menu(map.engine, 20, 10, (map.width - 20) / 2,
+                                    (map.height - 10) / 2, {"Move", "Dig"});
+        map.redraw_all();
+        if (chose == 0) {
+            create_path_to_area();
+        } else {
+            create_path_to_area();
+            active_action = std::make_unique<DigAction>(map, cursor_pos);
+        }
+    }
+}
 int Menu::show_options_menu(ConsoleEngine& engine, int width, int heigth,
                             int pos_x, int pos_y,
                             std::vector<std::string> options) {

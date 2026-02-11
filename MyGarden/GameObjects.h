@@ -9,6 +9,8 @@ inline constexpr double grass = 8;
 inline constexpr double path = 1;
 inline constexpr double water = 16;
 inline constexpr double rock = -1;
+inline constexpr double bridge = 1;
+
 };  // namespace PassabilityCoefs
 
 class Object {
@@ -78,6 +80,15 @@ class Path : public TerrainObject {
 
   private:
 };
+class Bridge : public TerrainObject {
+  public:
+    static constexpr double passability = PassabilityCoefs::bridge;
+    Bridge();
+
+    constexpr double get_passability() override { return passability; };
+
+  private:
+};
 class Water : public TerrainObject {
   public:
     static constexpr double passability = PassabilityCoefs::water;
@@ -96,9 +107,13 @@ class Rock : public TerrainObject {
 
   private:
 };
-class House : public Object {
+class House : public TerrainObject {
   public:
+    static constexpr double passability = PassabilityCoefs::rock;
     House();
+
+    constexpr double get_passability() override { return passability; };
+
 
   private:
 };

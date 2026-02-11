@@ -8,7 +8,7 @@ get_filename_component(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../common" ABSOLU
 add_subdirectory(${COMMON_DIR}/ConsoleEngine ConsoleEngine)
 add_subdirectory(${COMMON_DIR}/RandomGenerator RandomGenerator)
 
-add_executable(MyGarden main.cpp Game.cpp GameObjects.cpp)
+add_executable(MyGarden main.cpp Game.cpp GameObjects.cpp PathFinder.cpp)
 
 target_link_libraries(MyGarden PRIVATE ConsoleEngine)
 target_link_libraries(MyGarden PRIVATE RandomGenerator)

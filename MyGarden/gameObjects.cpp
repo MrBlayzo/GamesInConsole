@@ -82,7 +82,8 @@ Grass::Grass() : TerrainObject('"', Colors256::DarkGreen) {}
 Path::Path() : TerrainObject(':', Color256(130)) {}
 Water::Water() : TerrainObject('~', Colors256::Blue) {}
 Rock::Rock() : TerrainObject('^', Color256(242)) {}
-House::House() : Object('H', Colors256::OrangeBrown) {}
+Bridge::Bridge() : TerrainObject('=', Colors256::OrangeBrown) {}
+House::House() : TerrainObject('H', Colors256::OrangeBrown) {}
 
 Vegetable::Vegetable()
     : GrowingObject('c', Colors256::Red, get_factory().create_planted()) {}

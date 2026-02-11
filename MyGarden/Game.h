@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -8,11 +9,12 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <functional>
 
 #include "ConsoleEngine.h"
 #include "GameObjects.h"
 #include "RandomGenerator.h"
+#include "Point.h"
+#include "PathFinder.h"
 
 class Cell {
   public:
@@ -29,32 +31,74 @@ class Cell {
     int pos_y;
 };
 
-struct Point {
-    int x;
-    int y;
-    bool operator==(const Point& other) const {
-        return x == other.x && y == other.y;
-    }
-    Point operator+(const Point& point) const {
-        return Point{x + point.x, y + point.y};
-    }
-};
+enum class PlayerActionTypes { Move, Dig, Place, Build };
 
-namespace std {
-template <>
-struct hash<Point> {
-    size_t operator()(const Point& p) const {
-        size_t h1 = hash<int>{}(p.x);
-        size_t h2 = hash<int>{}(p.y);
-        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-    }
-};
-}  // namespace std
+class Map;
+class PathFinder;
 
-struct Player{
+class PlayerAction {
+  public:
+    PlayerAction(Map& map, Point pos);
+    virtual ~PlayerAction() = default;
+    void execute();
+    virtual void finish() = 0;
+    bool executed();
+
+    virtual constexpr int get_execution_time() = 0;
     Point pos;
+
+  protected:
+    Map& map;
+
+  private:
+    int execute_iteration = 0;
+    bool is_executed = false;
+};
+
+class DigAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 10;
+    DigAction(Map& map, Point pos);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+};
+
+class PlaceAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 10;
+    PlaceAction(Map& map, Point pos, std::unique_ptr<GrowingObject> new_object);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+
+    std::unique_ptr<GrowingObject> new_object;
+};
+
+class BuildAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 10;
+    BuildAction(Map& map, Point pos, std::unique_ptr<TerrainObject> new_object);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+
+    std::unique_ptr<TerrainObject> new_object;
+};
+
+class Player {
+  public:
+    Player(Map& map);
+    Point pos;
+    Point cursor_pos;
     std::optional<std::deque<Point>> active_path;
+    std::unique_ptr<PlayerAction> active_action;
     int walk_iteration;
+
+    bool update();
+    void create_path();
+    void create_path_to_area();
+    void new_action();
+
+  private:
+    Map& map;
 };
 
 class Map {
@@ -62,15 +106,27 @@ class Map {
     Map(int width, int height);
     Cell& get(int x, int y);
     void update();
+    double get_passability(int x, int y);
+    double get_passability(Point p);
+
+    void set_new_terrain(int x, int y, std::unique_ptr<TerrainObject> terrain);
+    void set_new_entity(int x, int y, std::unique_ptr<Object> entity);
+    void reset_entity(int x, int y);
+
+    void clear_path();
+    void draw_path();
+    void redraw(int x, int y);
+    void redraw_all();
+
     int width;
     int height;
 
+    ConsoleEngine engine;
+
   private:
     std::vector<std::vector<Cell>> map;
-    ConsoleEngine engine;
-    Point cursor_pos;
     Player player;
-    
+
     void generate();
     void generate_lakes();
     void generate_rivers();
@@ -78,21 +134,19 @@ class Map {
     void generate_objects();
     void add_gardener();
 
-    void clear_path();
-    void draw_path();
-
     void get_player_control();
     void player_move();
-
-    void redraw(int x, int y);
-    void redraw_all();
 };
 
-class Menu{
+class Menu {
   public:
-    static int show_options_menu(ConsoleEngine& engine, int width, int heigth, int pos_x, int pos_y, std::vector<std::string> options);
+    static int show_options_menu(ConsoleEngine& engine, int width, int heigth,
+                                 int pos_x, int pos_y,
+                                 std::vector<std::string> options);
+
   private:
-    Menu(ConsoleEngine& engine, int width, int height, int pos_x, int pos_y, std::vector<std::string> options);
+    Menu(ConsoleEngine& engine, int width, int height, int pos_x, int pos_y,
+         std::vector<std::string> options);
     void draw();
     int get_option();
     void select_option(int option);
@@ -104,50 +158,6 @@ class Menu{
     int pos_y;
     std::vector<std::string> options;
     int current_option;
-};
-
-class PathFinder {
-  public:
-    static std::optional<std::deque<Point>> create_path_to_point(Map& map, Point start,
-                                                        Point end);
-    static std::optional<std::deque<Point>> create_path_to_area(Map& map, Point start,
-                                                        Point end);
-
-  private:
-    struct PathPoint {
-        Point pos;
-        Point parent_pos;
-        double cost;
-        double target_cost;
-        bool calculated = false;
-    };
-    static constexpr std::array<Point, 4> dirr{
-        {{-1, 0}, {0, -1}, {1, 0}, {0, 1}}};
-    struct ComparePoints {
-        std::unordered_map<Point, PathPoint>& points_map;
-        ComparePoints(std::unordered_map<Point, PathPoint>& points_map)
-            : points_map(points_map) {};
-        bool operator()(const Point& a, const Point& b) const {
-            return points_map[a].cost + points_map[a].target_cost >
-                   points_map[b].cost + points_map[b].target_cost;
-        }
-    };
-
-    PathFinder(Map& map, Point start, Point end, std::function<bool(Point)> is_target);
-    std::optional<std::deque<Point>> find_path();
-    void explore_point(Point current_pos);
-    void look_at_new(Point new_pos, Point current_pos, double current_cost);
-    std::deque<Point> convert_path();
-    double dist_to_target(const Point& p) const;
-
-    Map& map_;
-    const Point start_;
-    const Point end_;
-    std::unordered_map<Point, PathPoint> points_;
-    ComparePoints comparator_;
-    std::priority_queue<Point, std::vector<Point>, ComparePoints> pending_;
-    std::optional<Point> found_target_;
-    std::function<bool(Point)> is_target_;
 };
 
 class MyGarden {
