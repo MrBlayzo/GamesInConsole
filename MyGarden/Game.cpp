@@ -349,36 +349,6 @@ void Map::reset_entity(int x, int y) {
     map[y][x].entity.reset();
     redraw(x, y);
 }
-PlayerAction::PlayerAction(Map& map, Point pos)
-    : map(map), execute_iteration(0), is_executed(false), pos(pos) {}
-DigAction::DigAction(Map& map, Point pos) : PlayerAction(map, pos) {}
-PlaceAction::PlaceAction(Map& map, Point pos,
-                         std::unique_ptr<GrowingObject> new_object)
-    : PlayerAction(map, pos), new_object(std::move(new_object)) {}
-BuildAction::BuildAction(Map& map, Point pos,
-                         std::unique_ptr<TerrainObject> new_object)
-    : PlayerAction(map, pos), new_object(std::move(new_object)) {}
-
-void PlayerAction::execute() {
-    if (is_executed) return;
-    if (++execute_iteration < get_execution_time()) return;
-    finish();
-    is_executed = true;
-}
-bool PlayerAction::executed() { return is_executed; }
-
-void DigAction::finish() {
-    map.reset_entity(pos.x, pos.y);
-    map.redraw(pos.x, pos.y);
-}
-void PlaceAction::finish() {
-    map.set_new_entity(pos.x, pos.y, std::move(new_object));
-    map.redraw(pos.x, pos.y);
-}
-void BuildAction::finish() {
-    map.set_new_terrain(pos.x, pos.y, std::move(new_object));
-    map.redraw(pos.x, pos.y);
-}
 
 void Map::player_move() {
     Point old_pos = player.pos;
@@ -396,104 +366,20 @@ void Map::player_move() {
     redraw(player.pos.x, player.pos.y);
 }
 
-Player::Player(Map& map) : map(map), cursor_pos(0, 0) {}
-bool Player::update() {
-    if (active_path.has_value() && !active_path.value().empty()) {
-        auto next_point = active_path.value().front();
-        if (++walk_iteration < map.get_passability(next_point)) return false;
-
-        walk_iteration = 0;
-        active_path.value().pop_front();
-        pos = next_point;
-        return true;
+std::vector<PlayerActionTypes> Map::get_available_action(int x, int y){
+    if(map[y][x].entity && !dynamic_cast<Gardener*>(map[y][x].entity.get())){
+        return map[y][x].entity->get_available_actions();
     }
-    if (active_action) {
-        active_action->execute();
-        if (active_action->executed()) {
-            active_action.reset();
-            return true;
-        }
-    }
-
-    return false;
+    return map[y][x].terrain->get_available_actions();
 }
 
-void Player::create_path() {
-    map.clear_path();
-    walk_iteration = 0;
-
-    if (map.get(cursor_pos.x, cursor_pos.y).entity)
-        active_path = PathFinder::create_path_to_area(map, pos, cursor_pos);
-    else
-        active_path = PathFinder::create_path_to_point(map, pos, cursor_pos);
-
-    map.draw_path();
-}
-
-void Player::create_path_to_area() {
-    map.clear_path();
-    walk_iteration = 0;
-
-    active_path = PathFinder::create_path_to_area(map, pos, cursor_pos);
-
-    map.draw_path();
-}
-
-void Player::new_action() {
-    if (!map.get(cursor_pos.x, cursor_pos.y).entity ||
-        dynamic_cast<Gardener*>(
-            map.get(cursor_pos.x, cursor_pos.y).entity.get())) {
-        int chose = Menu::show_options_menu(
-            map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
-            {"Move", "Place", "Build"});
-        map.redraw_all();
-        if (chose == 0) {
-            create_path();
-        } else if (chose == 1) {
-            int chose_object = Menu::show_options_menu(
-                map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
-                {"Flower", "Tree"});
-            map.redraw_all();
-            create_path_to_area();
-            if (chose_object == 0)
-                active_action = std::make_unique<PlaceAction>(
-                    map, cursor_pos, std::make_unique<Flower>());
-            else if (chose_object == 1)
-                active_action = std::make_unique<PlaceAction>(
-                    map, cursor_pos, std::make_unique<Tree>());
-        } else if (chose == 2) {
-            int chose_object = Menu::show_options_menu(
-                map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
-                {"Bridge", "House"});  // TODO: мосты на земле и дома в реках
-            map.redraw_all();
-            create_path_to_area();
-            if (chose_object == 0)
-                active_action = std::make_unique<BuildAction>(
-                    map, cursor_pos, std::make_unique<Bridge>());
-            else if (chose_object == 1)
-                active_action = std::make_unique<BuildAction>(
-                    map, cursor_pos, std::make_unique<House>());
-        }
-    } else {
-        int chose =
-            Menu::show_options_menu(map.engine, 20, 10, (map.width - 20) / 2,
-                                    (map.height - 10) / 2, {"Move", "Dig"});
-        map.redraw_all();
-        if (chose == 0) {
-            create_path_to_area();
-        } else {
-            create_path_to_area();
-            active_action = std::make_unique<DigAction>(map, cursor_pos);
-        }
-    }
-}
 int Menu::show_options_menu(ConsoleEngine& engine, int width, int heigth,
                             int pos_x, int pos_y,
-                            std::vector<std::string> options) {
+                            std::vector<MenuOption> options) {
     return Menu(engine, width, heigth, pos_x, pos_y, options).get_option();
 }
 Menu::Menu(ConsoleEngine& engine, int width, int height, int pos_x, int pos_y,
-           std::vector<std::string> options)
+           std::vector<MenuOption> options)
     : engine(engine),
       width(width),
       pos_x(pos_x),
@@ -528,10 +414,10 @@ void Menu::draw() {
         engine.print(std::string(width - 2, ' '));
     }
     for (int option = 0; option < options.size(); ++option) {
-        set_relative_pos((width - 2 - options[option].size()) / 2, option + 1);
+        set_relative_pos((width - 2 - options[option].param.size()) / 2, option + 1);
         if (option == current_option)
             engine.set_background_color(Colors256::Gray50);
-        engine.print(options[option]);
+        engine.print(options[option].param);
         if (option == current_option) engine.reset_styles();
     }
 }
@@ -555,16 +441,16 @@ int Menu::get_option() {
 void Menu::select_option(int option) {
     option = std::max(0, std::min((int)options.size() - 1, option));
     if (option == current_option) return;
-    set_relative_pos((width - 2 - options[current_option].size()) / 2,
+    set_relative_pos((width - 2 - options[current_option].param.size()) / 2,
                      current_option + 1);
-    engine.print(options[current_option]);
+    engine.print(options[current_option].param);
 
     current_option = option;
 
     engine.set_background_color(Colors256::Gray50);
-    set_relative_pos((width - 2 - options[current_option].size()) / 2,
+    set_relative_pos((width - 2 - options[current_option].param.size()) / 2,
                      current_option + 1);
-    engine.print(options[current_option]);
+    engine.print(options[current_option].param);
     engine.reset_styles();
 }
 

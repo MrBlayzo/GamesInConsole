@@ -1,4 +1,7 @@
 #pragma once
+#include <memory>
+#include <vector>
+
 #include "ConsoleEngine.h"
 #include "RandomGenerator.h"
 
@@ -13,6 +16,8 @@ inline constexpr double bridge = 1;
 
 };  // namespace PassabilityCoefs
 
+enum class PlayerActionTypes;
+
 class Object {
   public:
     Object(char sprite, Color256 color);
@@ -21,6 +26,7 @@ class Object {
     char get_sprite();
     Color256 get_color();
     virtual constexpr bool passable(){return false;};
+    virtual std::vector<PlayerActionTypes> get_available_actions();
 
   protected:
     char sprite;
@@ -50,6 +56,7 @@ class Ground : public TerrainObject {
     Ground();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -59,6 +66,7 @@ class Soil : public TerrainObject {
     Soil();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -68,6 +76,7 @@ class Grass : public TerrainObject {
     Grass();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -77,6 +86,7 @@ class Path : public TerrainObject {
     Path();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -86,6 +96,7 @@ class Bridge : public TerrainObject {
     Bridge();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -95,6 +106,7 @@ class Water : public TerrainObject {
     Water();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -104,6 +116,7 @@ class Rock : public TerrainObject {
     Rock();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
@@ -113,6 +126,7 @@ class House : public TerrainObject {
     House();
 
     constexpr double get_passability() override { return passability; };
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
 
   private:
@@ -188,6 +202,7 @@ class GrowingObject : public Object {
 
     virtual const GrowthStateFactory& get_factory() const = 0;
     void set_new_state(GrowthStatePtr state);
+    std::vector<PlayerActionTypes> get_available_actions() override;
 
     int grow_iteration;
 

@@ -80,7 +80,7 @@ bool ConsoleEngine::key_pressed(char key) {
     return GetAsyncKeyState(key) & 0x8000;
 }
 #else
-bool ConsoleEngine::key_pressed(char key)
+bool ConsoleEngine::key_pressed(char key){
     // TODO: сделать поддержку
     return get_no_wait() == key;
 }

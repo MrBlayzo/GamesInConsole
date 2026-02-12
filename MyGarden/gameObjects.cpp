@@ -1,9 +1,11 @@
 #include "GameObjects.h"
+#include "Player.h"
 
 Object::Object(char sprite, Color256 color) : sprite(sprite), color(color) {}
 
 char Object::get_sprite() { return sprite; }
 Color256 Object::get_color() { return color; }
+std::vector<PlayerActionTypes> Object::get_available_actions(){return {};}
 TerrainObject::TerrainObject(char sprite, Color256 color)
     : Object(sprite, color) {}
 
@@ -120,3 +122,31 @@ const GrowthStateFactory& Vegetable::get_factory() const {
 }
 const GrowthStateFactory& Flower::get_factory() const { return state_factory; }
 const GrowthStateFactory& Tree::get_factory() const { return state_factory; }
+
+std::vector<PlayerActionTypes> Ground::get_available_actions(){
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+}
+std::vector<PlayerActionTypes> Soil::get_available_actions(){
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+}
+std::vector<PlayerActionTypes> Grass::get_available_actions(){
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+}
+std::vector<PlayerActionTypes> Path::get_available_actions(){
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+}
+std::vector<PlayerActionTypes> Bridge::get_available_actions(){
+    return {PlayerActionTypes::Move};
+}
+std::vector<PlayerActionTypes> Water::get_available_actions(){
+    return {PlayerActionTypes::Move, PlayerActionTypes::Build};
+}
+std::vector<PlayerActionTypes> Rock::get_available_actions(){
+    return {};
+}
+std::vector<PlayerActionTypes> House::get_available_actions(){
+    return {PlayerActionTypes::Move};
+}
+std::vector<PlayerActionTypes> GrowingObject::get_available_actions(){
+    return {PlayerActionTypes::Move, PlayerActionTypes::Dig};
+}
