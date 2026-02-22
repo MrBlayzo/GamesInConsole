@@ -1,32 +1,51 @@
 #pragma once
-#include <optional>
 #include <deque>
-#include "Point.h"
+#include <optional>
+#include <unordered_map>
+
 #include "GameObjects.h"
+#include "Point.h"
 
-enum class PlayerActionTypes { Move, Dig, Place, Build };
+enum class PlayerActionTypes {
+    Move,
+    Dig,
+    Place,
+    Build,
+    Destroy,
+    ExtractResources,
+    DumpResources,
+    GetResourcesFromDump
+};
 
-inline std::string action_to_string(PlayerActionTypes action){
-    switch (action)
-    {
-    case PlayerActionTypes::Move:
-        return "Move";
-    case PlayerActionTypes::Dig:
-        return "Dig";
-    case PlayerActionTypes::Place:
-        return "Place";
-    case PlayerActionTypes::Build:
-        return "Build";
-    default:
-        return "";
+inline std::string action_to_string(PlayerActionTypes action) {
+    switch (action) {
+        case PlayerActionTypes::Move:
+            return "Move";
+        case PlayerActionTypes::Dig:
+            return "Dig";
+        case PlayerActionTypes::Place:
+            return "Place";
+        case PlayerActionTypes::Build:
+            return "Build";
+        case PlayerActionTypes::Destroy:
+            return "Destroy";
+        case PlayerActionTypes::ExtractResources:
+            return "Extract resources";
+        case PlayerActionTypes::DumpResources:
+            return "Dump resources";
+        case PlayerActionTypes::GetResourcesFromDump:
+            return "Get resources from dump";
+        default:
+            return "";
     }
 }
 
 class Map;
+class Player;
 
 class PlayerAction {
   public:
-    PlayerAction(Map& map, Point pos);
+    PlayerAction(Map& map, Player& player, Point pos);
     virtual ~PlayerAction() = default;
     void execute();
     virtual void finish() = 0;
@@ -37,6 +56,7 @@ class PlayerAction {
 
   protected:
     Map& map;
+    Player& player;
 
   private:
     int execute_iteration = 0;
@@ -46,7 +66,7 @@ class PlayerAction {
 class DigAction : public PlayerAction {
   public:
     static constexpr int execution_time = 10;
-    DigAction(Map& map, Point pos);
+    DigAction(Map& map, Player& player, Point pos);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 };
@@ -54,7 +74,8 @@ class DigAction : public PlayerAction {
 class PlaceAction : public PlayerAction {
   public:
     static constexpr int execution_time = 10;
-    PlaceAction(Map& map, Point pos, std::unique_ptr<GrowingObject> new_object);
+    PlaceAction(Map& map, Player& player, Point pos,
+                std::unique_ptr<GrowingObject> new_object);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 
@@ -64,11 +85,48 @@ class PlaceAction : public PlayerAction {
 class BuildAction : public PlayerAction {
   public:
     static constexpr int execution_time = 10;
-    BuildAction(Map& map, Point pos, std::unique_ptr<TerrainObject> new_object);
+    BuildAction(Map& map, Player& player, Point pos,
+                std::unique_ptr<EntityObject> new_object);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 
-    std::unique_ptr<TerrainObject> new_object;
+    std::unique_ptr<EntityObject> new_object;
+};
+
+class DestroyAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 20;
+    DestroyAction(Map& map, Player& player, Point pos);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+};
+
+class ExtractResourcesAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 20;
+    ExtractResourcesAction(Map& map, Player& player, Point pos);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+};
+
+class DumpResourcesAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 5;
+    DumpResourcesAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+
+    ResourceMap resources;
+};
+
+class GetResourcesFromDumpAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 5;
+    GetResourcesFromDumpAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+
+    ResourceMap resources;
 };
 
 class Player {
@@ -84,7 +142,18 @@ class Player {
     void create_path();
     void create_path_to_area();
     void new_action();
+    void see_resouces();
+    bool check_resources(PlayerActionTypes action);
+
+    ResourceMap resources{
+      {ResourceTypes::FlowerPlant, 2}
+    };
 
   private:
     Map& map;
+
+    void new_build_action();
+    void new_place_action();
+    void new_dump_resources_action();
+    void new_get_resources_from_dump_action();
 };

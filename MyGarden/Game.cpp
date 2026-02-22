@@ -13,7 +13,9 @@ void Cell::draw(ConsoleEngine& engine) {
     engine.set_cursor_to_pos(pos_x, pos_y);
     if (is_selected) engine.set_style(ConsoleStyle::Inverse);
     if (is_on_path) engine.set_background_color(Colors256::Gray80);
-    if (entity)
+    if (gardener)
+        engine.print_color(gardener->get_color(), gardener->get_sprite());
+    else if (entity)
         engine.print_color(entity->get_color(), entity->get_sprite());
     else
         engine.print_color(terrain->get_color(), terrain->get_sprite());
@@ -239,15 +241,25 @@ void Map::generate_objects() {
         }
     }
 
+    TreeStateFactory tree_state_factory{};
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             switch (generated[y][x]) {
                 case ObjectTypes::Grass:
-                    map[y][x].terrain = std::make_unique<Grass>();
+                    map[y][x].entity = std::make_unique<Grass>();
                     break;
-                case ObjectTypes::Tree:
-                    map[y][x].entity = std::make_unique<Tree>();
-                    break;
+                case ObjectTypes::Tree: {
+                    int random_state = RandomGenerator::randint(0, 2);
+                    if (random_state == 0)
+                        map[y][x].entity = std::make_unique<Tree>(
+                            tree_state_factory.create_planted());
+                    else if (random_state == 1)
+                        map[y][x].entity = std::make_unique<Tree>(
+                            tree_state_factory.create_growing());
+                    else
+                        map[y][x].entity = std::make_unique<Tree>(
+                            tree_state_factory.create_ready());
+                } break;
                 default:
                     break;
             }
@@ -262,7 +274,7 @@ void Map::add_gardener() {
         x = RandomGenerator::randint(0, width - 1);
         y = RandomGenerator::randint(0, height - 1);
     }
-    map[y][x].entity = std::make_unique<Gardener>();
+    map[y][x].gardener = std::make_unique<Gardener>();
     player.pos = Point(x, y);
 }
 void Map::redraw(int x, int y) { map[y][x].draw(engine); }
@@ -314,6 +326,8 @@ void Map::get_player_control() {
             player.cursor_pos.y = std::min(height - 1, player.cursor_pos.y + 1);
         } else if (c == 'f') {
             player.create_path();
+        } else if (c == 'i') {
+            player.see_resouces();
         } else if (c == '\r') {
             player.new_action();
         }
@@ -332,7 +346,7 @@ double Map::get_passability(int x, int y) {
     return map[y][x].terrain->get_passability();
 }
 double Map::get_passability(Point p) {
-    if (map[p.y][p.x].entity) return -1.0;
+    if (map[p.y][p.x].entity) return map[p.y][p.x].entity->get_passability();
     return map[p.y][p.x].terrain->get_passability();
 }
 
@@ -341,7 +355,7 @@ void Map::set_new_terrain(int x, int y,
     map[y][x].terrain = std::move(terrain);
     redraw(x, y);
 }
-void Map::set_new_entity(int x, int y, std::unique_ptr<Object> entity) {
+void Map::set_new_entity(int x, int y, std::unique_ptr<EntityObject> entity) {
     map[y][x].entity = std::move(entity);
     redraw(x, y);
 }
@@ -354,108 +368,29 @@ void Map::player_move() {
     Point old_pos = player.pos;
     if (!player.update()) return;
 
-    map[old_pos.y][old_pos.x].entity.reset();
+    map[old_pos.y][old_pos.x].gardener.reset();
     if (!dynamic_cast<Water*>(map[old_pos.y][old_pos.x].terrain.get()) &&
-        !dynamic_cast<Bridge*>(map[old_pos.y][old_pos.x].terrain.get())) {
+        !dynamic_cast<Bridge*>(map[old_pos.y][old_pos.x].entity.get())) {
+        map[old_pos.y][old_pos.x].entity.reset();
         map[old_pos.y][old_pos.x].terrain = std::make_unique<Path>();
     }
     map[old_pos.y][old_pos.x].is_on_path = false;
     redraw(old_pos.x, old_pos.y);
 
-    map[player.pos.y][player.pos.x].entity = std::make_unique<Gardener>();
+    map[player.pos.y][player.pos.x].gardener = std::make_unique<Gardener>();
     redraw(player.pos.x, player.pos.y);
 }
 
-std::vector<PlayerActionTypes> Map::get_available_action(int x, int y){
-    if(map[y][x].entity && !dynamic_cast<Gardener*>(map[y][x].entity.get())){
+std::vector<PlayerActionTypes> Map::get_available_action(int x, int y) {
+    if (map[y][x].entity &&
+        !dynamic_cast<Gardener*>(map[y][x].gardener.get())) {
         return map[y][x].entity->get_available_actions();
     }
     return map[y][x].terrain->get_available_actions();
 }
 
-std::vector<Buildings> Map::get_available_buildings(int x, int y){
+std::vector<BuildingTypes> Map::get_available_buildings(int x, int y) {
     return map[y][x].terrain->get_available_buildings();
-}
-
-int Menu::show_options_menu(ConsoleEngine& engine, int width, int heigth,
-                            int pos_x, int pos_y,
-                            std::vector<MenuOption> options) {
-    return Menu(engine, width, heigth, pos_x, pos_y, options).get_option();
-}
-Menu::Menu(ConsoleEngine& engine, int width, int height, int pos_x, int pos_y,
-           std::vector<MenuOption> options)
-    : engine(engine),
-      width(width),
-      pos_x(pos_x),
-      pos_y(pos_y),
-      height(height),
-      options(options),
-      current_option(0) {}
-
-void Menu::set_relative_pos(int x, int y) {
-    engine.set_cursor_to_pos(pos_x + x, pos_y + y);
-}
-
-void Menu::draw() {
-    for (int x = 0; x < width; ++x) {
-        set_relative_pos(x, 0);
-        engine.print('#');
-    }
-    for (int x = 0; x < width; ++x) {
-        set_relative_pos(x, height - 1);
-        engine.print('#');
-    }
-    for (int y = 0; y < height; ++y) {
-        set_relative_pos(0, y);
-        engine.print('#');
-    }
-    for (int y = 0; y < height; ++y) {
-        set_relative_pos(width - 1, y);
-        engine.print('#');
-    }
-    for (int y = 1; y < height - 1; ++y) {
-        set_relative_pos(1, y);
-        engine.print(std::string(width - 2, ' '));
-    }
-    for (int option = 0; option < options.size(); ++option) {
-        set_relative_pos((width - 2 - options[option].param.size()) / 2, option + 1);
-        if (option == current_option)
-            engine.set_background_color(Colors256::Gray50);
-        engine.print(options[option].param);
-        if (option == current_option) engine.reset_styles();
-    }
-}
-int Menu::get_option() {
-    draw();
-    char c;
-    do {
-        c = engine.get_no_wait();
-        if (c == 'w') {
-            select_option(current_option - 1);
-        } else if (c == 's') {
-            select_option(current_option + 1);
-        } else if (c == '\r') {
-            return current_option;
-        } else if (c == 27) {
-            return -1;
-        }
-    } while (true);
-    return 0;
-}
-void Menu::select_option(int option) {
-    option = std::max(0, std::min((int)options.size() - 1, option));
-    if (option == current_option) return;
-    set_relative_pos((width - 2 - options[current_option].param.size()) / 2,
-                     current_option + 1);
-    engine.print(options[current_option].param);
-
-    current_option = option;
-
-    engine.set_background_color(Colors256::Gray50);
-    set_relative_pos((width - 2 - options[current_option].param.size()) / 2,
-                     current_option + 1);
-    engine.print(options[current_option].param);
-    engine.reset_styles();
 }
 
 MyGarden::MyGarden(int width, int height) : map(width, height) {}

@@ -1,17 +1,35 @@
 #include "Player.h"
 
 #include "Game.h"
+#include "Menu.h"
 #include "PathFinder.h"
 
-PlayerAction::PlayerAction(Map& map, Point pos)
-    : map(map), execute_iteration(0), is_executed(false), pos(pos) {}
-DigAction::DigAction(Map& map, Point pos) : PlayerAction(map, pos) {}
-PlaceAction::PlaceAction(Map& map, Point pos,
+PlayerAction::PlayerAction(Map& map, Player& player, Point pos)
+    : map(map),
+      player(player),
+      execute_iteration(0),
+      is_executed(false),
+      pos(pos) {}
+DigAction::DigAction(Map& map, Player& player, Point pos)
+    : PlayerAction(map, player, pos) {}
+PlaceAction::PlaceAction(Map& map, Player& player, Point pos,
                          std::unique_ptr<GrowingObject> new_object)
-    : PlayerAction(map, pos), new_object(std::move(new_object)) {}
-BuildAction::BuildAction(Map& map, Point pos,
-                         std::unique_ptr<TerrainObject> new_object)
-    : PlayerAction(map, pos), new_object(std::move(new_object)) {}
+    : PlayerAction(map, player, pos), new_object(std::move(new_object)) {}
+BuildAction::BuildAction(Map& map, Player& player, Point pos,
+                         std::unique_ptr<EntityObject> new_object)
+    : PlayerAction(map, player, pos), new_object(std::move(new_object)) {}
+DestroyAction::DestroyAction(Map& map, Player& player, Point pos)
+    : PlayerAction(map, player, pos) {}
+ExtractResourcesAction::ExtractResourcesAction(Map& map, Player& player,
+                                               Point pos)
+    : PlayerAction(map, player, pos) {}
+DumpResourcesAction::DumpResourcesAction(Map& map, Player& player, Point pos,
+                                         ResourceMap resources)
+    : PlayerAction(map, player, pos), resources(resources) {}
+GetResourcesFromDumpAction::GetResourcesFromDumpAction(Map& map, Player& player,
+                                                       Point pos,
+                                                       ResourceMap resources)
+    : PlayerAction(map, player, pos), resources(resources) {}
 
 void PlayerAction::execute() {
     if (is_executed) return;
@@ -22,16 +40,63 @@ void PlayerAction::execute() {
 bool PlayerAction::executed() { return is_executed; }
 
 void DigAction::finish() {
+    for (auto& [res, count] : map.get(pos.x, pos.y).entity->get_resources()) {
+        player.resources[res] += count;
+    }
     map.reset_entity(pos.x, pos.y);
     map.redraw(pos.x, pos.y);
 }
+void DestroyAction::finish() {
+    for (auto& [res, count] : map.get(pos.x, pos.y).entity->get_resources()) {
+        player.resources[res] += count;
+    }
+    map.reset_entity(pos.x, pos.y);
+    map.redraw(pos.x, pos.y);
+}
+void ExtractResourcesAction::finish() {
+    for (auto& [res, count] : map.get(pos.x, pos.y).terrain->get_resources()) {
+        player.resources[res] += count;
+    }
+}
 void PlaceAction::finish() {
+    for (auto& [res, count] : new_object->get_required_resources()) {
+        player.resources[res] -= count;
+    }
     map.set_new_entity(pos.x, pos.y, std::move(new_object));
     map.redraw(pos.x, pos.y);
 }
 void BuildAction::finish() {
-    map.set_new_terrain(pos.x, pos.y, std::move(new_object));
+    for (auto& [res, count] : new_object->get_required_resources()) {
+        player.resources[res] -= count;
+    }
+    map.set_new_entity(pos.x, pos.y, std::move(new_object));
     map.redraw(pos.x, pos.y);
+}
+void DumpResourcesAction::finish() {
+    auto dump = dynamic_cast<Dump*>(map.get(pos.x, pos.y).entity.get());
+    if (dump) {
+        for (auto& [res, count] : resources) {
+            player.resources[res] -= count;
+            dump->resources[res] += count;
+        }
+    } else {
+        auto new_object = std::make_unique<Dump>();
+        for (auto& [res, count] : resources) {
+            player.resources[res] -= count;
+            new_object->resources[res] += count;
+        }
+        map.set_new_entity(pos.x, pos.y, std::move(new_object));
+    }
+}
+void GetResourcesFromDumpAction::finish() {
+    auto dump = dynamic_cast<Dump*>(map.get(pos.x, pos.y).entity.get());
+    int count_all = 0;
+    for (auto& [res, count] : resources) {
+        player.resources[res] += count;
+        dump->resources[res] -= count;
+        count_all += dump->resources[res];
+    }
+    if (count_all <= 0) map.reset_entity(pos.x, pos.y);
 }
 
 Player::Player(Map& map) : map(map), cursor_pos(0, 0) {}
@@ -86,55 +151,171 @@ void Player::new_action() {
         menu_options.emplace_back(action_to_string(action), action);
     }
 
-    int chose =
-        Menu::show_options_menu(map.engine, 20, 10, (map.width - 20) / 2,
-                                (map.height - 10) / 2, menu_options);
+    auto chose =
+        MenuSingle::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
+                                      (map.height - 10) / 2, menu_options);
     map.redraw_all();
 
-    if (chose < 0) return;  // TODO: исправить на optional
+    if (!chose.has_value()) return;
     PlayerActionTypes chosed =
-        std::any_cast<PlayerActionTypes>(menu_options[chose].return_param);
+        std::any_cast<PlayerActionTypes>(menu_options[chose.value()].return_param);
     if (chosed == PlayerActionTypes::Move) {
         create_path();
     } else if (chosed == PlayerActionTypes::Place) {
-        int chose_object = Menu::show_options_menu(
-            map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
-            {{"Flower", 0},
-             {"Tree", 1}});
-        map.redraw_all();
-        if (chose_object < 0) return;
-        create_path_to_area();
-        if (chose_object == 0)
-            active_action = std::make_unique<PlaceAction>(
-                map, cursor_pos, std::make_unique<Flower>());
-        else if (chose_object == 1)
-            active_action = std::make_unique<PlaceAction>(
-                map, cursor_pos, std::make_unique<Tree>());
+        new_place_action();
     } else if (chosed == PlayerActionTypes::Build) {
-        std::vector<Buildings> buildings =
-            map.get_available_buildings(cursor_pos.x, cursor_pos.y);
-
-        std::vector<MenuOption> menu_buildings_options;
-        for (auto& building : buildings) {
-            menu_buildings_options.emplace_back(building_type_to_string(building), building);
-        }
-
-        int chose_object_ind = Menu::show_options_menu(
-            map.engine, 20, 10, (map.width - 20) / 2, (map.height - 10) / 2,
-            menu_buildings_options);
-        map.redraw_all();
-        if (chose_object_ind < 0) return;
-        Buildings chose_object =
-            std::any_cast<Buildings>(menu_buildings_options[chose_object_ind].return_param);
+        new_build_action();
+    } else if (chosed == PlayerActionTypes::Dig) {
         create_path_to_area();
-        if (chose_object == Buildings::Bridge)
-            active_action = std::make_unique<BuildAction>(
-                map, cursor_pos, std::make_unique<Bridge>());
-        else if (chose_object == Buildings::House)
-            active_action = std::make_unique<BuildAction>(
-                map, cursor_pos, std::make_unique<House>());
-    } else {
+        active_action = std::make_unique<DigAction>(map, *this, cursor_pos);
+    } else if (chosed == PlayerActionTypes::Destroy) {
         create_path_to_area();
-        active_action = std::make_unique<DigAction>(map, cursor_pos);
+        active_action = std::make_unique<DestroyAction>(map, *this, cursor_pos);
+    } else if (chosed == PlayerActionTypes::ExtractResources) {
+        create_path_to_area();
+        active_action =
+            std::make_unique<ExtractResourcesAction>(map, *this, cursor_pos);
+    } else if (chosed == PlayerActionTypes::DumpResources) {
+        new_dump_resources_action();
+
+    } else if (chosed == PlayerActionTypes::GetResourcesFromDump) {
+        new_get_resources_from_dump_action();
+    }
+}
+
+void Player::new_build_action() {
+    std::vector<BuildingTypes> buildings =
+        map.get_available_buildings(cursor_pos.x, cursor_pos.y);
+
+    std::vector<MenuOption> menu_buildings_options;
+    for (auto& building : buildings) {
+        if (building == BuildingTypes::Bridge &&
+            Bridge::check_resources(resources))
+            menu_buildings_options.emplace_back(
+                building_type_to_string(building), building);
+        else if (building == BuildingTypes::House &&
+                 House::check_resources(resources))
+            menu_buildings_options.emplace_back(
+                building_type_to_string(building), building);
+    }
+
+    auto chose_object_ind = MenuSingle::show_options_menu(
+        map.engine, 26, 10, (map.width - 26) / 2, (map.height - 10) / 2,
+        menu_buildings_options);
+    map.redraw_all();
+    if (!chose_object_ind.has_value()) return;
+    BuildingTypes chose_object = std::any_cast<BuildingTypes>(
+        menu_buildings_options[chose_object_ind.value()].return_param);
+    create_path_to_area();
+    if (chose_object == BuildingTypes::Bridge)
+        active_action = std::make_unique<BuildAction>(
+            map, *this, cursor_pos, std::make_unique<Bridge>());
+    else if (chose_object == BuildingTypes::House)
+        active_action = std::make_unique<BuildAction>(
+            map, *this, cursor_pos, std::make_unique<House>());
+}
+void Player::new_place_action() {
+    std::vector<MenuOption> place_menu_options;
+    if (Flower::check_resources(resources)) {
+        place_menu_options.emplace_back("Flower", "Flower");
+    }
+    if (Tree::check_resources(resources)) {
+        place_menu_options.emplace_back("Tree", "Tree");
+    }
+    auto chose_object = MenuSingle::show_options_menu(
+        map.engine, 26, 10, (map.width - 26) / 2, (map.height - 10) / 2,
+        place_menu_options);
+    map.redraw_all();
+    if (!chose_object.has_value()) return;
+    create_path_to_area();
+    if (place_menu_options[chose_object.value()].param == "Flower")
+        active_action = std::make_unique<PlaceAction>(
+            map, *this, cursor_pos, std::make_unique<Flower>());
+    else if (place_menu_options[chose_object.value()].param == "Tree")
+        active_action = std::make_unique<PlaceAction>(map, *this, cursor_pos,
+                                                      std::make_unique<Tree>());
+}
+void Player::new_dump_resources_action() {
+    std::vector<MenuCountOption> menu_options;
+    for (auto& [res, count] : resources) {
+        if (count <= 0) continue;
+        menu_options.emplace_back(resource_type_to_string(res), res, 0, count);
+    }
+
+    auto chosed_options =
+        MenuCount::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
+                                     (map.height - 10) / 2, menu_options);
+    map.redraw_all();
+
+    if(!chosed_options.has_value()) return;
+    ResourceMap chosed_resources;
+    int count = 0;
+    for (auto& option : chosed_options.value()) {
+        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] = option.count;
+        count += option.count;
+    }
+    if (count >= 0) {
+        create_path_to_area();
+        active_action = std::make_unique<DumpResourcesAction>(
+            map, *this, cursor_pos, chosed_resources);
+    }
+}
+void Player::new_get_resources_from_dump_action() {
+    std::vector<MenuCountOption> menu_options;
+    auto dump =
+        dynamic_cast<Dump*>(map.get(cursor_pos.x, cursor_pos.y).entity.get());
+    for (auto& [res, count] : dump->resources) {
+        if (count <= 0) continue;
+        menu_options.emplace_back(resource_type_to_string(res), res, 0, count);
+    }
+
+    auto chosed_options =
+        MenuCount::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
+                                     (map.height - 10) / 2, menu_options);
+    map.redraw_all();
+
+    if(!chosed_options.has_value()) return;
+    ResourceMap chosed_resources;
+    int count = 0;
+    for (auto& option : chosed_options.value()) {
+        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] = option.count;
+        count += option.count;
+    }
+    if (count >= 0) {
+        create_path_to_area();
+        active_action = std::make_unique<GetResourcesFromDumpAction>(
+            map, *this, cursor_pos, chosed_resources);
+    }
+}
+void Player::see_resouces() {
+    std::vector<MenuOption> menu_options;
+    for (auto& [res, count] : resources) {
+        if (count <= 0) continue;
+        menu_options.emplace_back(
+            resource_type_to_string(res) + " " + std::to_string(count), res);
+    }
+
+    MenuSingle::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
+                                      (map.height - 10) / 2, menu_options);
+    map.redraw_all();
+}
+
+bool Player::check_resources(PlayerActionTypes action) {
+    switch (action) {
+        case PlayerActionTypes::Move:
+            return true;
+        case PlayerActionTypes::Dig:
+            return true;
+        case PlayerActionTypes::Place:
+            return true;
+        case PlayerActionTypes::Build:
+            return true;
+        case PlayerActionTypes::Destroy:
+            return true;
+        case PlayerActionTypes::ExtractResources:
+            return true;
+
+        default:
+            return false;
     }
 }

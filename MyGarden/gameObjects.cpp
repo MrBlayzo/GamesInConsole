@@ -1,17 +1,33 @@
 #include "GameObjects.h"
+
 #include "Player.h"
 
 Object::Object(char sprite, Color256 color) : sprite(sprite), color(color) {}
 
 char Object::get_sprite() { return sprite; }
 Color256 Object::get_color() { return color; }
-std::vector<PlayerActionTypes> Object::get_available_actions(){return {};}
+
+bool Object::check_resources(ResourceMap& resources,
+                             const ResourceMap& required_resources) {
+    for (auto& [res, count] : required_resources) {
+        if (!resources.contains(res)) return false;
+        if (resources.at(res) < required_resources.at(res)) return false;
+    }
+    return true;
+}
+std::vector<PlayerActionTypes> Object::get_available_actions() { return {}; }
 TerrainObject::TerrainObject(char sprite, Color256 color)
     : Object(sprite, color) {}
-std::vector<Buildings> TerrainObject::get_available_buildings(){return {};}
+EntityObject::EntityObject(char sprite, Color256 color)
+    : Object(sprite, color) {}
+std::vector<BuildingTypes> TerrainObject::get_available_buildings() {
+    return {};
+}
 
-GrowingObject::GrowingObject(char sprite, Color256 color, GrowthStatePtr state)
-    : Object(sprite, color), state(std::move(state)), grow_iteration(0) {}
+GrowingObject::GrowingObject(Color256 color, GrowthStatePtr state)
+    : EntityObject(state->get_sprite(), color),
+      state(std::move(state)),
+      grow_iteration(0) {}
 
 GrowthState::GrowthState(int min_growing_time, int max_growing_time,
                          char sprite)
@@ -81,25 +97,25 @@ GrowthStatePtr TreeStateFactory::create_ready() const {
 Gardener::Gardener() : Object('@', Colors256::Yellow) {}
 Ground::Ground() : TerrainObject('.', Colors256::GrayBrown) {}
 Soil::Soil() : TerrainObject('#', Colors256::LightBrown) {}
-Grass::Grass() : TerrainObject('"', Colors256::DarkGreen) {}
+Grass::Grass() : EntityObject('"', Colors256::DarkGreen) {}
 Path::Path() : TerrainObject(':', Color256(130)) {}
 Water::Water() : TerrainObject('~', Colors256::Blue) {}
 Rock::Rock() : TerrainObject('^', Color256(242)) {}
-Bridge::Bridge() : TerrainObject('=', Colors256::OrangeBrown) {}
-House::House() : TerrainObject('H', Colors256::OrangeBrown) {}
+Dump::Dump() : EntityObject('%', Color256(230)) {}
+Bridge::Bridge() : EntityObject('=', Colors256::OrangeBrown) {}
+House::House() : EntityObject('H', Colors256::OrangeBrown) {}
 
 Vegetable::Vegetable()
-    : GrowingObject('c', Colors256::Red, get_factory().create_planted()) {}
+    : GrowingObject(Colors256::Red, get_factory().create_planted()) {}
 Vegetable::Vegetable(GrowthStatePtr state)
-    : GrowingObject('c', Colors256::Red, std::move(state)) {}
+    : GrowingObject(Colors256::Red, std::move(state)) {}
 Flower::Flower()
-    : GrowingObject('f', Colors256::Purple, get_factory().create_planted()) {}
+    : GrowingObject(Colors256::Purple, get_factory().create_planted()) {}
 Flower::Flower(GrowthStatePtr state)
-    : GrowingObject('f', Colors256::Purple, std::move(state)) {}
-Tree::Tree()
-    : GrowingObject('i', Color256(28), get_factory().create_planted()) {}
+    : GrowingObject(Colors256::Purple, std::move(state)) {}
+Tree::Tree() : GrowingObject(Color256(28), get_factory().create_planted()) {}
 Tree::Tree(GrowthStatePtr state)
-    : GrowingObject('i', Color256(28), std::move(state)) {}
+    : GrowingObject(Color256(28), std::move(state)) {}
 
 bool Object::update() { return false; }
 bool Gardener::update() { return false; }
@@ -124,46 +140,139 @@ const GrowthStateFactory& Vegetable::get_factory() const {
 const GrowthStateFactory& Flower::get_factory() const { return state_factory; }
 const GrowthStateFactory& Tree::get_factory() const { return state_factory; }
 
-std::vector<PlayerActionTypes> Ground::get_available_actions(){
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+std::vector<PlayerActionTypes> Ground::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place,
+            PlayerActionTypes::Build, PlayerActionTypes::ExtractResources,
+            PlayerActionTypes::DumpResources};
 }
-std::vector<PlayerActionTypes> Soil::get_available_actions(){
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+std::vector<PlayerActionTypes> Soil::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place,
+            PlayerActionTypes::Build, PlayerActionTypes::ExtractResources,
+            PlayerActionTypes::DumpResources};
 }
-std::vector<PlayerActionTypes> Grass::get_available_actions(){
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+std::vector<PlayerActionTypes> Grass::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Dig};
 }
-std::vector<PlayerActionTypes> Path::get_available_actions(){
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place, PlayerActionTypes::Build};
+std::vector<PlayerActionTypes> Path::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Place,
+            PlayerActionTypes::Build, PlayerActionTypes::ExtractResources,
+            PlayerActionTypes::DumpResources};
 }
-std::vector<PlayerActionTypes> Bridge::get_available_actions(){
-    return {PlayerActionTypes::Move};
+std::vector<PlayerActionTypes> Bridge::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Destroy};
 }
-std::vector<PlayerActionTypes> Water::get_available_actions(){
-    return {PlayerActionTypes::Move, PlayerActionTypes::Build};
+std::vector<PlayerActionTypes> Water::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Build,
+            PlayerActionTypes::ExtractResources};
 }
-std::vector<PlayerActionTypes> Rock::get_available_actions(){
-    return {};
+std::vector<PlayerActionTypes> Rock::get_available_actions() {
+    return {PlayerActionTypes::ExtractResources};
 }
-std::vector<PlayerActionTypes> House::get_available_actions(){
-    return {PlayerActionTypes::Move};
+std::vector<PlayerActionTypes> House::get_available_actions() {
+    return {PlayerActionTypes::Move, PlayerActionTypes::Destroy};
 }
-std::vector<PlayerActionTypes> GrowingObject::get_available_actions(){
+std::vector<PlayerActionTypes> Dump::get_available_actions() {
+    return {PlayerActionTypes::DumpResources,
+            PlayerActionTypes::GetResourcesFromDump};
+}
+std::vector<PlayerActionTypes> GrowingObject::get_available_actions() {
     return {PlayerActionTypes::Move, PlayerActionTypes::Dig};
 }
 
-std::vector<Buildings> Ground::get_available_buildings(){
-    return {Buildings::House};
+std::vector<BuildingTypes> Ground::get_available_buildings() {
+    return {BuildingTypes::House};
 }
-std::vector<Buildings> Soil::get_available_buildings(){
-    return {Buildings::House};
+std::vector<BuildingTypes> Soil::get_available_buildings() {
+    return {BuildingTypes::House};
 }
-std::vector<Buildings> Grass::get_available_buildings(){
-    return {Buildings::House};
+std::vector<BuildingTypes> Path::get_available_buildings() {
+    return {BuildingTypes::House};
 }
-std::vector<Buildings> Path::get_available_buildings(){
-    return {Buildings::House};
+std::vector<BuildingTypes> Water::get_available_buildings() {
+    return {BuildingTypes::Bridge};
 }
-std::vector<Buildings> Water::get_available_buildings(){
-    return {Buildings::Bridge};
+
+ResourceMap Ground::get_resources() {
+    return {{ResourceTypes::Dirt, RandomGenerator::randint(2, 6)}};
+}
+ResourceMap Soil::get_resources() {
+    return {{ResourceTypes::Dirt, RandomGenerator::randint(5, 10)}};
+}
+ResourceMap Bridge::get_resources() {
+    return {{ResourceTypes::Wood, RandomGenerator::randint(2, 5)}};
+}
+ResourceMap Water::get_resources() { return {{ResourceTypes::Water, 1}}; }
+ResourceMap Rock::get_resources() {
+    return {{ResourceTypes::Stone, RandomGenerator::randint(5, 10)}};
+}
+ResourceMap House::get_resources() {
+    return {{ResourceTypes::Wood, RandomGenerator::randint(3, 6)},
+            {ResourceTypes::Stone, RandomGenerator::randint(2, 4)}};
+}
+ResourceMap Flower::get_resources() {
+    // TODO: передать ответственность состояниям
+    if (dynamic_cast<GrowingState*>(state.get())) {
+        return {{ResourceTypes::FlowerPlant, RandomGenerator::randint(1, 2)}};
+    } else if (dynamic_cast<ReadyState*>(state.get())) {
+        return {{ResourceTypes::FlowerPlant, RandomGenerator::randint(2, 4)}};
+    }
+
+    return {{ResourceTypes::FlowerPlant, 1}};
+}
+ResourceMap Tree::get_resources() {
+    // TODO: передать ответственность состояниям
+    if (dynamic_cast<GrowingState*>(state.get())) {
+        return {{ResourceTypes::TreePlant, RandomGenerator::randint(1, 3)}};
+    } else if (dynamic_cast<ReadyState*>(state.get())) {
+        return {{ResourceTypes::TreePlant, RandomGenerator::randint(1, 3)},
+                {ResourceTypes::Wood, RandomGenerator::randint(1, 3)}};
+    }
+
+    return {{ResourceTypes::TreePlant, 1}};
+}
+ResourceMap Dump::get_resources() { return {}; }
+
+const ResourceMap Bridge::required_resources{{ResourceTypes::Wood, 5}};
+const ResourceMap House::required_resources{{ResourceTypes::Wood, 10},
+                                            {ResourceTypes::Stone, 10}};
+const ResourceMap Flower::required_resources{{ResourceTypes::FlowerPlant, 1}};
+const ResourceMap Tree::required_resources{{ResourceTypes::TreePlant, 1}};
+
+const ResourceMap& Bridge::get_required_resources_static() {
+    return required_resources;
+}
+const ResourceMap& House::get_required_resources_static() {
+    return required_resources;
+}
+const ResourceMap& Flower::get_required_resources_static() {
+    return required_resources;
+}
+const ResourceMap& Tree::get_required_resources_static() {
+    return required_resources;
+}
+
+bool Bridge::check_resources(ResourceMap& resources) {
+    return Object::check_resources(resources, get_required_resources_static());
+}
+bool House::check_resources(ResourceMap& resources) {
+    return Object::check_resources(resources, get_required_resources_static());
+}
+bool Flower::check_resources(ResourceMap& resources) {
+    return Object::check_resources(resources, get_required_resources_static());
+}
+bool Tree::check_resources(ResourceMap& resources) {
+    return Object::check_resources(resources, get_required_resources_static());
+}
+
+const ResourceMap& Bridge::get_required_resources() {
+    return get_required_resources_static();
+}
+const ResourceMap& House::get_required_resources() {
+    return get_required_resources_static();
+}
+const ResourceMap& Flower::get_required_resources() {
+    return get_required_resources_static();
+}
+const ResourceMap& Tree::get_required_resources() {
+    return get_required_resources_static();
 }

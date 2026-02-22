@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "ConsoleEngine.h"
@@ -17,19 +18,36 @@ inline constexpr double bridge = 1;
 };  // namespace PassabilityCoefs
 
 enum class PlayerActionTypes;
-enum class Buildings{
-  House, 
-  Bridge
-};
-inline std::string building_type_to_string(Buildings building){
-    switch (building)
-    {
-    case Buildings::House:
-        return "House";
-    case Buildings::Bridge:
-        return "Bridge";
-    default:
-        return "";
+enum class BuildingTypes { House, Bridge };
+inline std::string building_type_to_string(BuildingTypes building) {
+    switch (building) {
+        case BuildingTypes::House:
+            return "House";
+        case BuildingTypes::Bridge:
+            return "Bridge";
+        default:
+            return "";
+    }
+}
+
+enum class ResourceTypes { Dirt, Stone, Wood, Water, TreePlant, FlowerPlant };
+using ResourceMap = std::unordered_map<ResourceTypes, int>;
+inline std::string resource_type_to_string(ResourceTypes resource) {
+    switch (resource) {
+        case ResourceTypes::Dirt:
+            return "Dirt";
+        case ResourceTypes::Stone:
+            return "Stone";
+        case ResourceTypes::Wood:
+            return "Wood";
+        case ResourceTypes::Water:
+            return "Water";
+        case ResourceTypes::TreePlant:
+            return "TreePlant";
+        case ResourceTypes::FlowerPlant:
+            return "FlowerPlant";
+        default:
+            return "";
     }
 }
 
@@ -40,8 +58,17 @@ class Object {
     virtual bool update();
     char get_sprite();
     Color256 get_color();
-    virtual constexpr bool passable(){return false;};
+    virtual constexpr double get_passability() { return -1.0; };
+
     virtual std::vector<PlayerActionTypes> get_available_actions();
+    virtual ResourceMap get_resources() { return {}; };
+
+    static bool check_resources(ResourceMap& resources,
+                                const ResourceMap& required_resources);
+    virtual const ResourceMap& get_required_resources() {
+        static const ResourceMap empty;
+        return empty;
+    };
 
   protected:
     char sprite;
@@ -53,9 +80,12 @@ class Object {
 class TerrainObject : public Object {
   public:
     TerrainObject(char sprite, Color256 color);
-    virtual constexpr double get_passability() { return -1.0; };
-    virtual std::vector<Buildings> get_available_buildings();
-    constexpr bool passable(){return true;};
+    virtual std::vector<BuildingTypes> get_available_buildings();
+};
+
+class EntityObject : public Object {
+  public:
+    EntityObject(char sprite, Color256 color);
 };
 
 class Gardener : public Object {
@@ -73,7 +103,8 @@ class Ground : public TerrainObject {
 
     constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
-    std::vector<Buildings> get_available_buildings() override;
+    std::vector<BuildingTypes> get_available_buildings() override;
+    ResourceMap get_resources() override;
 
   private:
 };
@@ -84,19 +115,19 @@ class Soil : public TerrainObject {
 
     constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
-    std::vector<Buildings> get_available_buildings() override;
+    std::vector<BuildingTypes> get_available_buildings() override;
+    ResourceMap get_resources() override;
 
   private:
 };
-// TODO: исправить - трава, здания - это не TerrainObject
-class Grass : public TerrainObject {
+
+class Grass : public EntityObject {
   public:
     static constexpr double passability = PassabilityCoefs::grass;
     Grass();
 
     constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
-    std::vector<Buildings> get_available_buildings() override;
 
   private:
 };
@@ -107,19 +138,24 @@ class Path : public TerrainObject {
 
     constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
-    std::vector<Buildings> get_available_buildings() override;
+    std::vector<BuildingTypes> get_available_buildings() override;
 
   private:
 };
-class Bridge : public TerrainObject {
+class Bridge : public EntityObject {
   public:
     static constexpr double passability = PassabilityCoefs::bridge;
     Bridge();
 
     constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap& get_required_resources() override;
 
   private:
+    static const ResourceMap required_resources;
 };
 class Water : public TerrainObject {
   public:
@@ -128,28 +164,42 @@ class Water : public TerrainObject {
 
     constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
-    std::vector<Buildings> get_available_buildings() override;
+    std::vector<BuildingTypes> get_available_buildings() override;
+    ResourceMap get_resources() override;
 
   private:
 };
 class Rock : public TerrainObject {
   public:
-    static constexpr double passability = PassabilityCoefs::rock;
     Rock();
 
-    constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
+    ResourceMap get_resources() override;
 
   private:
+    ResourceMap resources;
 };
-class House : public TerrainObject {
+class House : public EntityObject {
   public:
-    static constexpr double passability = PassabilityCoefs::rock;
     House();
-
-    constexpr double get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap& get_required_resources() override;
 
+  private:
+    static const ResourceMap required_resources;
+};
+
+class Dump : public EntityObject {
+  public:
+    Dump();
+
+    std::vector<PlayerActionTypes> get_available_actions() override;
+    ResourceMap get_resources() override;
+
+    ResourceMap resources;
 
   private:
 };
@@ -218,9 +268,9 @@ class TreeStateFactory : public GrowthStateFactory {
     GrowthStatePtr create_ready() const override;
 };
 
-class GrowingObject : public Object {
+class GrowingObject : public EntityObject {
   public:
-    GrowingObject(char sprite, Color256 color, GrowthStatePtr state);
+    GrowingObject(Color256 color, GrowthStatePtr state);
 
     virtual const GrowthStateFactory& get_factory() const = 0;
     void set_new_state(GrowthStatePtr state);
@@ -249,8 +299,13 @@ class Flower : public GrowingObject {
     Flower(GrowthStatePtr state);
     bool update() override;
     const GrowthStateFactory& get_factory() const override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap& get_required_resources() override;
 
   private:
+    static const ResourceMap required_resources;
 };
 class Tree : public GrowingObject {
   public:
@@ -259,6 +314,11 @@ class Tree : public GrowingObject {
     Tree(GrowthStatePtr state);
     bool update() override;
     const GrowthStateFactory& get_factory() const override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap& get_required_resources() override;
 
   private:
+    static const ResourceMap required_resources;
 };

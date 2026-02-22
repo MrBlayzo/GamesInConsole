@@ -9,18 +9,18 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <any>
 
 #include "ConsoleEngine.h"
 #include "GameObjects.h"
-#include "RandomGenerator.h"
-#include "Point.h"
 #include "Player.h"
+#include "Point.h"
+#include "RandomGenerator.h"
 
 class Cell {
   public:
     std::unique_ptr<TerrainObject> terrain;
-    std::unique_ptr<Object> entity;
+    std::unique_ptr<EntityObject> entity;
+    std::unique_ptr<Gardener> gardener;
     bool is_selected;
     bool is_on_path;
 
@@ -41,7 +41,7 @@ class Map {
     double get_passability(Point p);
 
     void set_new_terrain(int x, int y, std::unique_ptr<TerrainObject> terrain);
-    void set_new_entity(int x, int y, std::unique_ptr<Object> entity);
+    void set_new_entity(int x, int y, std::unique_ptr<EntityObject> entity);
     void reset_entity(int x, int y);
 
     void clear_path();
@@ -50,7 +50,7 @@ class Map {
     void redraw_all();
 
     std::vector<PlayerActionTypes> get_available_action(int x, int y);
-    std::vector<Buildings> get_available_buildings(int x, int y);
+    std::vector<BuildingTypes> get_available_buildings(int x, int y);
 
     int width;
     int height;
@@ -70,33 +70,6 @@ class Map {
 
     void get_player_control();
     void player_move();
-};
-
-struct MenuOption{
-  std::string param;
-  std::any return_param;
-};
-
-class Menu {
-  public:
-    static int show_options_menu(ConsoleEngine& engine, int width, int heigth,
-                                 int pos_x, int pos_y,
-                                 std::vector<MenuOption> options);
-
-  private:
-    Menu(ConsoleEngine& engine, int width, int height, int pos_x, int pos_y,
-         std::vector<MenuOption> options);
-    void draw();
-    int get_option();
-    void select_option(int option);
-    void set_relative_pos(int x, int y);
-    ConsoleEngine& engine;
-    int width;
-    int height;
-    int pos_x;
-    int pos_y;
-    std::vector<MenuOption> options;
-    int current_option;
 };
 
 class MyGarden {
