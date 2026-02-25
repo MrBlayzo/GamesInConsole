@@ -7,15 +7,25 @@
 #include "RandomGenerator.h"
 
 namespace PassabilityCoefs {
-inline constexpr double ground = 2;
-inline constexpr double soil = 4;
-inline constexpr double grass = 8;
-inline constexpr double path = 1;
-inline constexpr double water = 16;
-inline constexpr double rock = -1;
-inline constexpr double bridge = 1;
+inline constexpr int ground = 2;
+inline constexpr int soil = 4;
+inline constexpr int grass = 8;
+inline constexpr int path = 1;
+inline constexpr int water = 16;
+inline constexpr int rock = -1;
+inline constexpr int bridge = 1;
 
 };  // namespace PassabilityCoefs
+
+namespace WeightCoefs {
+inline constexpr int dirt = 2;
+inline constexpr int stone = 5;
+inline constexpr int wood = 4;
+inline constexpr int water = 4;
+inline constexpr int tree_plant = 2;
+inline constexpr int flower_plant = 1;
+
+};  // namespace MassCoefs
 
 enum class PlayerActionTypes;
 enum class BuildingTypes { House, Bridge };
@@ -50,6 +60,31 @@ inline std::string resource_type_to_string(ResourceTypes resource) {
             return "";
     }
 }
+inline int get_resourse_weight(ResourceTypes resource) {
+    switch (resource) {
+        case ResourceTypes::Dirt:
+            return WeightCoefs::dirt;
+        case ResourceTypes::Stone:
+            return WeightCoefs::stone;
+        case ResourceTypes::Wood:
+            return WeightCoefs::wood;
+        case ResourceTypes::Water:
+            return WeightCoefs::water;
+        case ResourceTypes::TreePlant:
+            return WeightCoefs::tree_plant;
+        case ResourceTypes::FlowerPlant:
+            return WeightCoefs::flower_plant;
+        default:
+            return 0;
+    }
+}
+inline int get_resourse_weight(ResourceMap resources) {
+    int mass = 0;
+    for (auto& [res, count]: resources) {
+        mass += count * get_resourse_weight(res);
+    }
+    return mass;
+}
 
 class Object {
   public:
@@ -58,7 +93,7 @@ class Object {
     virtual bool update();
     char get_sprite();
     Color256 get_color();
-    virtual constexpr double get_passability() { return -1.0; };
+    virtual constexpr int get_passability() { return -1; };
 
     virtual std::vector<PlayerActionTypes> get_available_actions();
     virtual ResourceMap get_resources() { return {}; };
@@ -98,10 +133,10 @@ class Gardener : public Object {
 
 class Ground : public TerrainObject {
   public:
-    static constexpr double passability = PassabilityCoefs::ground;
+    static constexpr int passability = PassabilityCoefs::ground;
     Ground();
 
-    constexpr double get_passability() override { return passability; };
+    constexpr int get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
     std::vector<BuildingTypes> get_available_buildings() override;
     ResourceMap get_resources() override;
@@ -110,10 +145,10 @@ class Ground : public TerrainObject {
 };
 class Soil : public TerrainObject {
   public:
-    static constexpr double passability = PassabilityCoefs::soil;
+    static constexpr int passability = PassabilityCoefs::soil;
     Soil();
 
-    constexpr double get_passability() override { return passability; };
+    constexpr int get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
     std::vector<BuildingTypes> get_available_buildings() override;
     ResourceMap get_resources() override;
@@ -123,20 +158,20 @@ class Soil : public TerrainObject {
 
 class Grass : public EntityObject {
   public:
-    static constexpr double passability = PassabilityCoefs::grass;
+    static constexpr int passability = PassabilityCoefs::grass;
     Grass();
 
-    constexpr double get_passability() override { return passability; };
+    constexpr int get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
 
   private:
 };
 class Path : public TerrainObject {
   public:
-    static constexpr double passability = PassabilityCoefs::path;
+    static constexpr int passability = PassabilityCoefs::path;
     Path();
 
-    constexpr double get_passability() override { return passability; };
+    constexpr int get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
     std::vector<BuildingTypes> get_available_buildings() override;
 
@@ -144,10 +179,10 @@ class Path : public TerrainObject {
 };
 class Bridge : public EntityObject {
   public:
-    static constexpr double passability = PassabilityCoefs::bridge;
+    static constexpr int passability = PassabilityCoefs::bridge;
     Bridge();
 
-    constexpr double get_passability() override { return passability; };
+    constexpr int get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
     ResourceMap get_resources() override;
     static const ResourceMap& get_required_resources_static();
@@ -159,10 +194,10 @@ class Bridge : public EntityObject {
 };
 class Water : public TerrainObject {
   public:
-    static constexpr double passability = PassabilityCoefs::water;
+    static constexpr int passability = PassabilityCoefs::water;
     Water();
 
-    constexpr double get_passability() override { return passability; };
+    constexpr int get_passability() override { return passability; };
     std::vector<PlayerActionTypes> get_available_actions() override;
     std::vector<BuildingTypes> get_available_buildings() override;
     ResourceMap get_resources() override;

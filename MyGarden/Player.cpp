@@ -26,6 +26,9 @@ ExtractResourcesAction::ExtractResourcesAction(Map& map, Player& player,
 DumpResourcesAction::DumpResourcesAction(Map& map, Player& player, Point pos,
                                          ResourceMap resources)
     : PlayerAction(map, player, pos), resources(resources) {}
+DropResourcesAction::DropResourcesAction(Map& map, Player& player, Point pos,
+                                         ResourceMap resources)
+    : PlayerAction(map, player, pos), resources(resources) {}
 GetResourcesFromDumpAction::GetResourcesFromDumpAction(Map& map, Player& player,
                                                        Point pos,
                                                        ResourceMap resources)
@@ -88,6 +91,11 @@ void DumpResourcesAction::finish() {
         map.set_new_entity(pos.x, pos.y, std::move(new_object));
     }
 }
+void DropResourcesAction::finish() {
+    for (auto& [res, count] : resources) {
+        player.resources[res] -= count;
+    }
+}
 void GetResourcesFromDumpAction::finish() {
     auto dump = dynamic_cast<Dump*>(map.get(pos.x, pos.y).entity.get());
     int count_all = 0;
@@ -99,11 +107,13 @@ void GetResourcesFromDumpAction::finish() {
     if (count_all <= 0) map.reset_entity(pos.x, pos.y);
 }
 
-Player::Player(Map& map) : map(map), cursor_pos(0, 0) {}
+Player::Player(Map& map) : map(map), cursor_pos(0, 0) { calculate_weight(); }
 bool Player::update() {
     if (active_path.has_value() && !active_path.value().empty()) {
         auto next_point = active_path.value().front();
-        if (++walk_iteration < map.get_passability(next_point)) return false;
+        if (++walk_iteration < map.get_passability(next_point) +
+                                   std::max(0, current_weight - max_weight))
+            return false;
 
         walk_iteration = 0;
         active_path.value().pop_front();
@@ -113,7 +123,10 @@ bool Player::update() {
     if (active_action) {
         active_action->execute();
         if (active_action->executed()) {
+            map.get(active_action->pos).is_on_work = false;
+            map.redraw(active_action->pos);
             active_action.reset();
+            calculate_weight();
             return true;
         }
     }
@@ -133,32 +146,45 @@ void Player::create_path() {
     map.draw_path();
 }
 
-void Player::create_path_to_area() {
+void Player::create_path_to_area(Point target) {
     map.clear_path();
     walk_iteration = 0;
 
-    active_path = PathFinder::create_path_to_area(map, pos, cursor_pos);
+    active_path = PathFinder::create_path_to_area(map, pos, target);
 
     map.draw_path();
 }
 
+void Player::create_path_to_area() { create_path_to_area(cursor_pos); }
+
 void Player::new_action() {
     std::vector<PlayerActionTypes> actions =
         map.get_available_action(cursor_pos.x, cursor_pos.y);
-
+    if (current_weight > max_weight) {
+        int i = 0;
+        while (i < actions.size()) {
+            if (actions[i] != PlayerActionTypes::Move &&
+                actions[i] != PlayerActionTypes::DumpResources &&
+                actions[i] != PlayerActionTypes::DropResources) {
+                actions.erase(actions.begin() + i);
+            } else
+                ++i;
+        }
+    }
     std::vector<MenuOption> menu_options;
     for (auto& action : actions) {
         menu_options.emplace_back(action_to_string(action), action);
     }
 
-    auto chose =
-        MenuSingle::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
-                                      (map.height - 10) / 2, menu_options);
+    auto chose = MenuSingle::show_options_menu(
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_options);
     map.redraw_all();
 
     if (!chose.has_value()) return;
-    PlayerActionTypes chosed =
-        std::any_cast<PlayerActionTypes>(menu_options[chose.value()].return_param);
+    PlayerActionTypes chosed = std::any_cast<PlayerActionTypes>(
+        menu_options[chose.value()].return_param);
     if (chosed == PlayerActionTypes::Move) {
         create_path();
     } else if (chosed == PlayerActionTypes::Place) {
@@ -176,11 +202,16 @@ void Player::new_action() {
         active_action =
             std::make_unique<ExtractResourcesAction>(map, *this, cursor_pos);
     } else if (chosed == PlayerActionTypes::DumpResources) {
-        new_dump_resources_action();
+        new_dump_resources_action(cursor_pos);
 
     } else if (chosed == PlayerActionTypes::GetResourcesFromDump) {
         new_get_resources_from_dump_action();
+    } else if (chosed == PlayerActionTypes::DropResources) {
+        new_drop_resources_action();
     }
+    if(active_action)
+        map.get(active_action->pos).is_on_work = true;
+        map.redraw(active_action->pos);
 }
 
 void Player::new_build_action() {
@@ -200,8 +231,9 @@ void Player::new_build_action() {
     }
 
     auto chose_object_ind = MenuSingle::show_options_menu(
-        map.engine, 26, 10, (map.width - 26) / 2, (map.height - 10) / 2,
-        menu_buildings_options);
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_buildings_options);
     map.redraw_all();
     if (!chose_object_ind.has_value()) return;
     BuildingTypes chose_object = std::any_cast<BuildingTypes>(
@@ -223,8 +255,9 @@ void Player::new_place_action() {
         place_menu_options.emplace_back("Tree", "Tree");
     }
     auto chose_object = MenuSingle::show_options_menu(
-        map.engine, 26, 10, (map.width - 26) / 2, (map.height - 10) / 2,
-        place_menu_options);
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, place_menu_options);
     map.redraw_all();
     if (!chose_object.has_value()) return;
     create_path_to_area();
@@ -235,33 +268,62 @@ void Player::new_place_action() {
         active_action = std::make_unique<PlaceAction>(map, *this, cursor_pos,
                                                       std::make_unique<Tree>());
 }
-void Player::new_dump_resources_action() {
-    std::vector<MenuCountOption> menu_options;
+void Player::new_dump_resources_action(Point action_pos) {
+    std::vector<MenuMassOption> menu_options;
     for (auto& [res, count] : resources) {
         if (count <= 0) continue;
         menu_options.emplace_back(resource_type_to_string(res), res, 0, count);
     }
 
-    auto chosed_options =
-        MenuCount::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
-                                     (map.height - 10) / 2, menu_options);
+    auto chosed_options = MenuMass::show_options_menu(
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_options);
     map.redraw_all();
 
-    if(!chosed_options.has_value()) return;
+    if (!chosed_options.has_value()) return;
     ResourceMap chosed_resources;
     int count = 0;
     for (auto& option : chosed_options.value()) {
-        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] = option.count;
+        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] =
+            option.count;
         count += option.count;
     }
     if (count >= 0) {
         create_path_to_area();
         active_action = std::make_unique<DumpResourcesAction>(
+            map, *this, action_pos, chosed_resources);
+    }
+}
+void Player::new_drop_resources_action() {
+    std::vector<MenuMassOption> menu_options;
+    for (auto& [res, count] : resources) {
+        if (count <= 0) continue;
+        menu_options.emplace_back(resource_type_to_string(res), res, 0, count);
+    }
+
+    auto chosed_options = MenuMass::show_options_menu(
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_options);
+    map.redraw_all();
+
+    if (!chosed_options.has_value()) return;
+    ResourceMap chosed_resources;
+    int count = 0;
+    for (auto& option : chosed_options.value()) {
+        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] =
+            option.count;
+        count += option.count;
+    }
+    if (count >= 0) {
+        create_path_to_area();
+        active_action = std::make_unique<DropResourcesAction>(
             map, *this, cursor_pos, chosed_resources);
     }
 }
 void Player::new_get_resources_from_dump_action() {
-    std::vector<MenuCountOption> menu_options;
+    std::vector<MenuMassOption> menu_options;
     auto dump =
         dynamic_cast<Dump*>(map.get(cursor_pos.x, cursor_pos.y).entity.get());
     for (auto& [res, count] : dump->resources) {
@@ -269,16 +331,18 @@ void Player::new_get_resources_from_dump_action() {
         menu_options.emplace_back(resource_type_to_string(res), res, 0, count);
     }
 
-    auto chosed_options =
-        MenuCount::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
-                                     (map.height - 10) / 2, menu_options);
+    auto chosed_options = MenuMass::show_options_menu(
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_options);
     map.redraw_all();
 
-    if(!chosed_options.has_value()) return;
+    if (!chosed_options.has_value()) return;
     ResourceMap chosed_resources;
     int count = 0;
     for (auto& option : chosed_options.value()) {
-        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] = option.count;
+        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] =
+            option.count;
         count += option.count;
     }
     if (count >= 0) {
@@ -288,15 +352,18 @@ void Player::new_get_resources_from_dump_action() {
     }
 }
 void Player::see_resouces() {
-    std::vector<MenuOption> menu_options;
+    std::vector<MenuMassOption> menu_options;
     for (auto& [res, count] : resources) {
         if (count <= 0) continue;
         menu_options.emplace_back(
-            resource_type_to_string(res) + " " + std::to_string(count), res);
+            resource_type_to_string(res),
+            res, count, count);
     }
 
-    MenuSingle::show_options_menu(map.engine, 26, 10, (map.width - 26) / 2,
-                                      (map.height - 10) / 2, menu_options);
+    MenuMass::show_options_menu(
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_options, false);
     map.redraw_all();
 }
 
@@ -318,4 +385,17 @@ bool Player::check_resources(PlayerActionTypes action) {
         default:
             return false;
     }
+}
+
+void Player::calculate_weight() {
+    current_weight = get_resourse_weight(resources);
+}
+
+void Player::clear_action(){
+    map.clear_path();
+    if(active_action)
+        map.get(active_action->pos).is_on_work = false;
+        map.redraw(active_action->pos);
+    active_path.reset();
+    active_action.reset();
 }

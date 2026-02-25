@@ -14,7 +14,8 @@ enum class PlayerActionTypes {
     Destroy,
     ExtractResources,
     DumpResources,
-    GetResourcesFromDump
+    GetResourcesFromDump,
+    DropResources
 };
 
 inline std::string action_to_string(PlayerActionTypes action) {
@@ -35,6 +36,8 @@ inline std::string action_to_string(PlayerActionTypes action) {
             return "Dump resources";
         case PlayerActionTypes::GetResourcesFromDump:
             return "Get resources from dump";
+        case PlayerActionTypes::DropResources:
+            return "Drop resources";
         default:
             return "";
     }
@@ -119,6 +122,16 @@ class DumpResourcesAction : public PlayerAction {
     ResourceMap resources;
 };
 
+class DropResourcesAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 5;
+    DropResourcesAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+
+    ResourceMap resources;
+};
+
 class GetResourcesFromDumpAction : public PlayerAction {
   public:
     static constexpr int execution_time = 5;
@@ -141,9 +154,11 @@ class Player {
     bool update();
     void create_path();
     void create_path_to_area();
+    void create_path_to_area(Point target);
     void new_action();
     void see_resouces();
     bool check_resources(PlayerActionTypes action);
+    void clear_action();
 
     ResourceMap resources{
       {ResourceTypes::FlowerPlant, 2}
@@ -151,9 +166,13 @@ class Player {
 
   private:
     Map& map;
+    int max_weight = 20;
+    int current_weight = 0;
 
     void new_build_action();
     void new_place_action();
-    void new_dump_resources_action();
+    void new_dump_resources_action(Point action_pos);
+    void new_drop_resources_action();
     void new_get_resources_from_dump_action();
+    void calculate_weight();
 };

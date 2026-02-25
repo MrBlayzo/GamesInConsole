@@ -7,12 +7,23 @@ Cell::Cell(int x, int y, std::unique_ptr<TerrainObject> terrain)
       pos_y(y),
       terrain(std::move(terrain)),
       is_selected(false),
-      is_on_path(false) {}
+      is_on_path(false),
+      is_on_work(false) {}
 
 void Cell::draw(ConsoleEngine& engine) {
     engine.set_cursor_to_pos(pos_x, pos_y);
-    if (is_selected) engine.set_style(ConsoleStyle::Inverse);
-    if (is_on_path) engine.set_background_color(Colors256::Gray80);
+    if (is_selected) {
+        if (is_on_path)
+            engine.set_background_color(Colors256::Gray50);
+        else if (is_on_work)
+            engine.set_background_color(Color256{160});
+        else
+            engine.set_style(ConsoleStyle::Inverse);
+    } else if (is_on_path)
+        engine.set_background_color(Colors256::Gray80);
+    else if (is_on_work)
+        engine.set_background_color(Colors256::Red);
+
     if (gardener)
         engine.print_color(gardener->get_color(), gardener->get_sprite());
     else if (entity)
@@ -39,6 +50,7 @@ Map::Map(int width, int height)
 }
 
 Cell& Map::get(int x, int y) { return map[y][x]; }
+Cell& Map::get(Point p) { return map[p.y][p.x]; }
 
 void Map::generate() {
     generate_lakes();
@@ -278,6 +290,7 @@ void Map::add_gardener() {
     player.pos = Point(x, y);
 }
 void Map::redraw(int x, int y) { map[y][x].draw(engine); }
+void Map::redraw(Point p) { map[p.y][p.x].draw(engine); }
 void Map::redraw_all() {
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -328,6 +341,8 @@ void Map::get_player_control() {
             player.create_path();
         } else if (c == 'i') {
             player.see_resouces();
+        } else if (c == 27) {
+            player.clear_action();
         } else if (c == '\r') {
             player.new_action();
         }

@@ -23,6 +23,7 @@ class Cell {
     std::unique_ptr<Gardener> gardener;
     bool is_selected;
     bool is_on_path;
+    bool is_on_work;
 
     Cell(int x, int y, std::unique_ptr<TerrainObject> terrain);
     void draw(ConsoleEngine& engine);
@@ -36,6 +37,7 @@ class Map {
   public:
     Map(int width, int height);
     Cell& get(int x, int y);
+    Cell& get(Point p);
     void update();
     double get_passability(int x, int y);
     double get_passability(Point p);
@@ -47,6 +49,7 @@ class Map {
     void clear_path();
     void draw_path();
     void redraw(int x, int y);
+    void redraw(Point p);
     void redraw_all();
 
     std::vector<PlayerActionTypes> get_available_action(int x, int y);

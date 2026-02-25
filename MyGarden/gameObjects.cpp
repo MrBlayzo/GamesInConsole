@@ -141,42 +141,52 @@ const GrowthStateFactory& Flower::get_factory() const { return state_factory; }
 const GrowthStateFactory& Tree::get_factory() const { return state_factory; }
 
 std::vector<PlayerActionTypes> Ground::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place,
-            PlayerActionTypes::Build, PlayerActionTypes::ExtractResources,
-            PlayerActionTypes::DumpResources};
+    return {
+        PlayerActionTypes::Move,          PlayerActionTypes::Place,
+        PlayerActionTypes::Build,         PlayerActionTypes::ExtractResources,
+        PlayerActionTypes::DumpResources, PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Soil::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place,
-            PlayerActionTypes::Build, PlayerActionTypes::ExtractResources,
-            PlayerActionTypes::DumpResources};
+    return {
+        PlayerActionTypes::Move,          PlayerActionTypes::Place,
+        PlayerActionTypes::Build,         PlayerActionTypes::ExtractResources,
+        PlayerActionTypes::DumpResources, PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Grass::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Dig};
+    return {PlayerActionTypes::Move, PlayerActionTypes::Dig,
+            PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Path::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Place,
-            PlayerActionTypes::Build, PlayerActionTypes::ExtractResources,
-            PlayerActionTypes::DumpResources};
+    return {
+        PlayerActionTypes::Move,          PlayerActionTypes::Place,
+        PlayerActionTypes::Build,         PlayerActionTypes::ExtractResources,
+        PlayerActionTypes::DumpResources, PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Bridge::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Destroy};
+    return {PlayerActionTypes::Move, PlayerActionTypes::Destroy,
+            PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Water::get_available_actions() {
     return {PlayerActionTypes::Move, PlayerActionTypes::Build,
-            PlayerActionTypes::ExtractResources};
+            PlayerActionTypes::ExtractResources,
+            PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Rock::get_available_actions() {
-    return {PlayerActionTypes::ExtractResources};
+    return {PlayerActionTypes::ExtractResources,
+            PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> House::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Destroy};
+    return {PlayerActionTypes::Move, PlayerActionTypes::Destroy,
+            PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> Dump::get_available_actions() {
     return {PlayerActionTypes::DumpResources,
-            PlayerActionTypes::GetResourcesFromDump};
+            PlayerActionTypes::GetResourcesFromDump,
+            PlayerActionTypes::DropResources};
 }
 std::vector<PlayerActionTypes> GrowingObject::get_available_actions() {
-    return {PlayerActionTypes::Move, PlayerActionTypes::Dig};
+    return {PlayerActionTypes::Move, PlayerActionTypes::Dig,
+            PlayerActionTypes::DropResources};
 }
 
 std::vector<BuildingTypes> Ground::get_available_buildings() {
