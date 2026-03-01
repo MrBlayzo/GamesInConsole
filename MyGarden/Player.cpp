@@ -15,9 +15,12 @@ DigAction::DigAction(Map& map, Player& player, Point pos)
 PlaceAction::PlaceAction(Map& map, Player& player, Point pos,
                          std::unique_ptr<GrowingObject> new_object)
     : PlayerAction(map, player, pos), new_object(std::move(new_object)) {}
-BuildAction::BuildAction(Map& map, Player& player, Point pos,
-                         std::unique_ptr<EntityObject> new_object)
+StartBuildAction::StartBuildAction(Map& map, Player& player, Point pos,
+                                   std::unique_ptr<BuildingObject> new_object)
     : PlayerAction(map, player, pos), new_object(std::move(new_object)) {}
+BuildAction::BuildAction(Map& map, Player& player, Point pos,
+                         ResourceMap resources)
+    : PlayerAction(map, player, pos), resources(resources) {}
 DestroyAction::DestroyAction(Map& map, Player& player, Point pos)
     : PlayerAction(map, player, pos) {}
 ExtractResourcesAction::ExtractResourcesAction(Map& map, Player& player,
@@ -33,7 +36,10 @@ GetResourcesFromDumpAction::GetResourcesFromDumpAction(Map& map, Player& player,
                                                        Point pos,
                                                        ResourceMap resources)
     : PlayerAction(map, player, pos), resources(resources) {}
-
+WateringAction::WateringAction(Map& map, Player& player, Point pos)
+    : PlayerAction(map, player, pos) {}
+FertilizingAction::FertilizingAction(Map& map, Player& player, Point pos)
+    : PlayerAction(map, player, pos) {}
 void PlayerAction::execute() {
     if (is_executed) return;
     if (++execute_iteration < get_execution_time()) return;
@@ -68,12 +74,20 @@ void PlaceAction::finish() {
     map.set_new_entity(pos.x, pos.y, std::move(new_object));
     map.redraw(pos.x, pos.y);
 }
-void BuildAction::finish() {
-    for (auto& [res, count] : new_object->get_required_resources()) {
+void StartBuildAction::finish() {
+    for (auto& [res, count] : new_object->get_start_build_resources()) {
         player.resources[res] -= count;
     }
     map.set_new_entity(pos.x, pos.y, std::move(new_object));
     map.redraw(pos.x, pos.y);
+}
+void BuildAction::finish() {
+    if (dynamic_cast<BuildingObject*>(map.get(pos).entity.get())
+            ->build(resources))
+        map.redraw(pos.x, pos.y);
+    for (auto& [res, count] : resources) {
+        player.resources[res] -= count;
+    }
 }
 void DumpResourcesAction::finish() {
     auto dump = dynamic_cast<Dump*>(map.get(pos.x, pos.y).entity.get());
@@ -106,7 +120,14 @@ void GetResourcesFromDumpAction::finish() {
     }
     if (count_all <= 0) map.reset_entity(pos.x, pos.y);
 }
-
+void WateringAction::finish() {
+    player.resources[ResourceTypes::Water] -= 1;
+    dynamic_cast<GrowingObject*>(map.get(pos).entity.get())->watering();
+}
+void FertilizingAction::finish() {
+    player.resources[ResourceTypes::Fertilizer] -= 1;
+    dynamic_cast<GrowingObject*>(map.get(pos).entity.get())->fertilizing();
+}
 Player::Player(Map& map) : map(map), cursor_pos(0, 0) { calculate_weight(); }
 bool Player::update() {
     if (active_path.has_value() && !active_path.value().empty()) {
@@ -171,6 +192,19 @@ void Player::new_action() {
                 ++i;
         }
     }
+    if (!resources.contains(ResourceTypes::Water) ||
+        resources.at(ResourceTypes::Water) <= 0) {
+        std::erase_if(actions, [](PlayerActionTypes action) {
+            return action == PlayerActionTypes::Watering;
+        });
+    }
+    if (!resources.contains(ResourceTypes::Fertilizer) ||
+        resources.at(ResourceTypes::Fertilizer) <= 0) {
+        std::erase_if(actions, [](PlayerActionTypes action) {
+            return action == PlayerActionTypes::Fertilizing;
+        });
+    }
+
     std::vector<MenuOption> menu_options;
     for (auto& action : actions) {
         menu_options.emplace_back(action_to_string(action), action);
@@ -189,8 +223,10 @@ void Player::new_action() {
         create_path();
     } else if (chosed == PlayerActionTypes::Place) {
         new_place_action();
+    } else if (chosed == PlayerActionTypes::StartBuild) {
+        new_start_build_action();
     } else if (chosed == PlayerActionTypes::Build) {
-        new_build_action();
+        new_continue_build_action();
     } else if (chosed == PlayerActionTypes::Dig) {
         create_path_to_area();
         active_action = std::make_unique<DigAction>(map, *this, cursor_pos);
@@ -208,13 +244,22 @@ void Player::new_action() {
         new_get_resources_from_dump_action();
     } else if (chosed == PlayerActionTypes::DropResources) {
         new_drop_resources_action();
+    } else if (chosed == PlayerActionTypes::Watering) {
+        create_path_to_area();
+        active_action =
+            std::make_unique<WateringAction>(map, *this, cursor_pos);
+    } else if (chosed == PlayerActionTypes::Fertilizing) {
+        create_path_to_area();
+        active_action =
+            std::make_unique<FertilizingAction>(map, *this, cursor_pos);
     }
-    if(active_action)
+    if (active_action) {
         map.get(active_action->pos).is_on_work = true;
         map.redraw(active_action->pos);
+    }
 }
 
-void Player::new_build_action() {
+void Player::new_start_build_action() {
     std::vector<BuildingTypes> buildings =
         map.get_available_buildings(cursor_pos.x, cursor_pos.y);
 
@@ -240,11 +285,41 @@ void Player::new_build_action() {
         menu_buildings_options[chose_object_ind.value()].return_param);
     create_path_to_area();
     if (chose_object == BuildingTypes::Bridge)
-        active_action = std::make_unique<BuildAction>(
+        active_action = std::make_unique<StartBuildAction>(
             map, *this, cursor_pos, std::make_unique<Bridge>());
     else if (chose_object == BuildingTypes::House)
-        active_action = std::make_unique<BuildAction>(
+        active_action = std::make_unique<StartBuildAction>(
             map, *this, cursor_pos, std::make_unique<House>());
+}
+void Player::new_continue_build_action() {
+    std::vector<MenuMassOption> menu_options;
+    const ResourceMap& required_resources =
+        map.get(cursor_pos).entity->get_required_resources();
+    for (auto& [res, count] : resources) {
+        if (!required_resources.contains(res)) continue;
+        menu_options.emplace_back(resource_type_to_string(res), res, 0,
+                                  std::min(count, required_resources.at(res)));
+    }
+
+    auto chosed_options = MenuMass::show_options_menu(
+        map.engine, Menu::default_width, Menu::default_height,
+        (map.width - Menu::default_width) / 2,
+        (map.height - Menu::default_height) / 2, menu_options);
+    map.redraw_all();
+
+    if (!chosed_options.has_value()) return;
+    ResourceMap chosed_resources;
+    int count = 0;
+    for (auto& option : chosed_options.value()) {
+        chosed_resources[std::any_cast<ResourceTypes>(option.return_param)] =
+            option.count;
+        count += option.count;
+    }
+    if (count >= 0) {
+        create_path_to_area();
+        active_action = std::make_unique<BuildAction>(map, *this, cursor_pos,
+                                                      chosed_resources);
+    }
 }
 void Player::new_place_action() {
     std::vector<MenuOption> place_menu_options;
@@ -355,9 +430,8 @@ void Player::see_resouces() {
     std::vector<MenuMassOption> menu_options;
     for (auto& [res, count] : resources) {
         if (count <= 0) continue;
-        menu_options.emplace_back(
-            resource_type_to_string(res),
-            res, count, count);
+        menu_options.emplace_back(resource_type_to_string(res), res, count,
+                                  count);
     }
 
     MenuMass::show_options_menu(
@@ -391,11 +465,12 @@ void Player::calculate_weight() {
     current_weight = get_resourse_weight(resources);
 }
 
-void Player::clear_action(){
+void Player::clear_action() {
     map.clear_path();
-    if(active_action)
+    if (active_action) {
         map.get(active_action->pos).is_on_work = false;
         map.redraw(active_action->pos);
+    }
     active_path.reset();
     active_action.reset();
 }

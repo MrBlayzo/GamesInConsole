@@ -10,12 +10,15 @@ enum class PlayerActionTypes {
     Move,
     Dig,
     Place,
+    StartBuild,
     Build,
     Destroy,
     ExtractResources,
     DumpResources,
     GetResourcesFromDump,
-    DropResources
+    DropResources,
+    Watering,
+    Fertilizing
 };
 
 inline std::string action_to_string(PlayerActionTypes action) {
@@ -28,6 +31,8 @@ inline std::string action_to_string(PlayerActionTypes action) {
             return "Place";
         case PlayerActionTypes::Build:
             return "Build";
+        case PlayerActionTypes::StartBuild:
+            return "Build";
         case PlayerActionTypes::Destroy:
             return "Destroy";
         case PlayerActionTypes::ExtractResources:
@@ -38,6 +43,10 @@ inline std::string action_to_string(PlayerActionTypes action) {
             return "Get resources from dump";
         case PlayerActionTypes::DropResources:
             return "Drop resources";
+        case PlayerActionTypes::Watering:
+            return "Watering";
+        case PlayerActionTypes::Fertilizing:
+            return "Fertilizing";
         default:
             return "";
     }
@@ -85,15 +94,25 @@ class PlaceAction : public PlayerAction {
     std::unique_ptr<GrowingObject> new_object;
 };
 
-class BuildAction : public PlayerAction {
+class StartBuildAction : public PlayerAction {
   public:
     static constexpr int execution_time = 10;
-    BuildAction(Map& map, Player& player, Point pos,
-                std::unique_ptr<EntityObject> new_object);
+    StartBuildAction(Map& map, Player& player, Point pos,
+                     std::unique_ptr<BuildingObject> new_object);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 
-    std::unique_ptr<EntityObject> new_object;
+    std::unique_ptr<BuildingObject> new_object;
+};
+
+class BuildAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 10;
+    BuildAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+
+    ResourceMap resources;
 };
 
 class DestroyAction : public PlayerAction {
@@ -115,7 +134,8 @@ class ExtractResourcesAction : public PlayerAction {
 class DumpResourcesAction : public PlayerAction {
   public:
     static constexpr int execution_time = 5;
-    DumpResourcesAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    DumpResourcesAction(Map& map, Player& player, Point pos,
+                        ResourceMap resources);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 
@@ -125,7 +145,8 @@ class DumpResourcesAction : public PlayerAction {
 class DropResourcesAction : public PlayerAction {
   public:
     static constexpr int execution_time = 5;
-    DropResourcesAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    DropResourcesAction(Map& map, Player& player, Point pos,
+                        ResourceMap resources);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 
@@ -135,11 +156,28 @@ class DropResourcesAction : public PlayerAction {
 class GetResourcesFromDumpAction : public PlayerAction {
   public:
     static constexpr int execution_time = 5;
-    GetResourcesFromDumpAction(Map& map, Player& player, Point pos, ResourceMap resources);
+    GetResourcesFromDumpAction(Map& map, Player& player, Point pos,
+                               ResourceMap resources);
     void finish() override;
     constexpr int get_execution_time() override { return execution_time; };
 
     ResourceMap resources;
+};
+
+class WateringAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 20;
+    WateringAction(Map& map, Player& player, Point pos);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
+};
+
+class FertilizingAction : public PlayerAction {
+  public:
+    static constexpr int execution_time = 20;
+    FertilizingAction(Map& map, Player& player, Point pos);
+    void finish() override;
+    constexpr int get_execution_time() override { return execution_time; };
 };
 
 class Player {
@@ -160,16 +198,15 @@ class Player {
     bool check_resources(PlayerActionTypes action);
     void clear_action();
 
-    ResourceMap resources{
-      {ResourceTypes::FlowerPlant, 2}
-    };
+    ResourceMap resources{{ResourceTypes::FlowerPlant, 2}};
 
   private:
     Map& map;
     int max_weight = 20;
     int current_weight = 0;
 
-    void new_build_action();
+    void new_start_build_action();
+    void new_continue_build_action();
     void new_place_action();
     void new_dump_resources_action(Point action_pos);
     void new_drop_resources_action();
