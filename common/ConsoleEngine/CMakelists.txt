@@ -14,7 +14,7 @@ target_include_directories(ConsoleEngine PUBLIC
 target_compile_features(ConsoleEngine PUBLIC cxx_std_20)
 
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
-    option(LOCAL_BUILD "Enable if building without internet (uses common/ dependencies)" OFF)
+    option(LOCAL_BUILD "Enable if building without internet (uses common/ dependencies)" ON)
     enable_testing()
 
     if(LOCAL_BUILD)

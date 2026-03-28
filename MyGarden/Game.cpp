@@ -303,11 +303,30 @@ void Map::update() {
     player_move();
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            if (map[y][x].entity && map[y][x].entity->update()) {
-                redraw(x, y);
+            if (map[y][x].entity) {
+                auto result = map[y][x].entity->update();
+                if (result.redraw) redraw(x, y);
+                if (result.seed) try_place_seed(x, y);
+                if (result.death) {
+                    map[y][x].entity.reset();
+                    redraw(x, y);
+                }
             }
         }
     }
+}
+void Map::try_place_seed(int x, int y) {
+    int new_x = RandomGenerator::randint(std::max(0, x - 2),
+                                         std::min(width - 1, x + 2));
+    int new_y = RandomGenerator::randint(std::max(0, y - 2),
+                                         std::min(height - 1, y + 2));
+    if (map[new_y][new_x].entity) return;
+    if (map[new_y][new_x].is_on_path || map[new_y][new_x].is_on_work ||
+        map[new_y][new_x].is_selected)
+        return;
+    map[new_y][new_x].entity =
+        dynamic_cast<GrowingObject*>(map[y][x].entity.get())->create_seed();
+    redraw(new_x, new_y);
 }
 
 void Map::clear_path() {

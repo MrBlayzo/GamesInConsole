@@ -198,7 +198,11 @@ class Player {
     bool check_resources(PlayerActionTypes action);
     void clear_action();
 
-    ResourceMap resources{{ResourceTypes::FlowerPlant, 2}};
+    ResourceMap resources{{ResourceTypes::FlowerSeed, 2},
+                          {ResourceTypes::PotatoSeed, 2},
+                          {ResourceTypes::CarrotSeed, 2},
+                          {ResourceTypes::CucumberSeed, 2},
+                          {ResourceTypes::TomatoSeed, 2}};
 
   private:
     Map& map;

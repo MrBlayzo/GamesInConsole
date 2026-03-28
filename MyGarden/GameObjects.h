@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -21,9 +22,9 @@ namespace WeightCoefs {
 inline constexpr int dirt = 2;
 inline constexpr int stone = 5;
 inline constexpr int wood = 4;
-inline constexpr int water = 4;
+inline constexpr int water = 1;
 inline constexpr int tree_plant = 2;
-inline constexpr int flower_plant = 1;
+inline constexpr int seed = 0;
 
 };  // namespace WeightCoefs
 
@@ -46,7 +47,11 @@ enum class ResourceTypes {
     Wood,
     Water,
     TreePlant,
-    FlowerPlant,
+    FlowerSeed,
+    PotatoSeed,
+    CarrotSeed,
+    CucumberSeed,
+    TomatoSeed,
     Fertilizer
 };
 using ResourceMap = std::unordered_map<ResourceTypes, int>;
@@ -62,8 +67,16 @@ inline std::string resource_type_to_string(ResourceTypes resource) {
             return "Water";
         case ResourceTypes::TreePlant:
             return "TreePlant";
-        case ResourceTypes::FlowerPlant:
-            return "FlowerPlant";
+        case ResourceTypes::FlowerSeed:
+            return "FlowerSeed";
+        case ResourceTypes::PotatoSeed:
+            return "PotatoSeed";
+        case ResourceTypes::CarrotSeed:
+            return "CarrotSeed";
+        case ResourceTypes::CucumberSeed:
+            return "CucumberSeed";
+        case ResourceTypes::TomatoSeed:
+            return "TomatoSeed";
         case ResourceTypes::Fertilizer:
             return "Fertilizer";
         default:
@@ -82,8 +95,8 @@ inline int get_resourse_weight(ResourceTypes resource) {
             return WeightCoefs::water;
         case ResourceTypes::TreePlant:
             return WeightCoefs::tree_plant;
-        case ResourceTypes::FlowerPlant:
-            return WeightCoefs::flower_plant;
+        case ResourceTypes::FlowerSeed:
+            return WeightCoefs::seed;
         default:
             return 0;
     }
@@ -96,11 +109,17 @@ inline int get_resourse_weight(ResourceMap resources) {
     return mass;
 }
 
+struct UpdateResult {
+    bool redraw = false;
+    bool seed = false;
+    bool death = false;
+};
+
 class Object {
   public:
     Object(char sprite, Color256 color);
     virtual ~Object() = default;
-    virtual bool update();
+    virtual UpdateResult update();
     char get_sprite();
     Color256 get_color();
     virtual const int get_passability() { return -1; };
@@ -136,7 +155,7 @@ class EntityObject : public Object {
 class Gardener : public Object {
   public:
     Gardener();
-    bool update() override;
+    UpdateResult update() override;
 
   private:
 };
@@ -324,19 +343,22 @@ class Bridge : public BuildingObject {
 
 class GrowingObject;
 
-struct GrowthState {
+enum class GrowthStateType { Planted, Growing, Ready, Drying, Rotten };
+
+class GrowthState {
   public:
     GrowthState(int min_growing_time, int max_growing_time,
                 int min_time_to_need_watering, int max_time_to_need_watering,
                 int min_time_to_need_fertilizing,
                 int max_time_to_need_fertilizing, char sprite);
     virtual ~GrowthState() = default;
-    virtual bool update(GrowingObject& obj);
+    virtual UpdateResult update(GrowingObject& obj);
     int get_growing_time();
     char get_sprite();
     virtual void new_stage(GrowingObject& obj) { return; };
     virtual void watering(GrowingObject& obj);
     void fertilizing();
+    virtual GrowthStateType get_type() = 0;
 
   protected:
     const char sprite;
@@ -347,6 +369,8 @@ struct GrowthState {
     int time_to_need_fertilizing;
 };
 
+using GrowthStatePtr = std::unique_ptr<GrowthState>;
+
 class PlantedState : public GrowthState {
   public:
     PlantedState(int min_growing_time, int max_growing_time,
@@ -354,6 +378,7 @@ class PlantedState : public GrowthState {
                  int min_time_to_need_fertilizing,
                  int max_time_to_need_fertilizing, char sprite);
     void new_stage(GrowingObject& obj) override;
+    GrowthStateType get_type() override { return GrowthStateType::Planted; }
 };
 class GrowingState : public GrowthState {
   public:
@@ -362,28 +387,37 @@ class GrowingState : public GrowthState {
                  int min_time_to_need_fertilizing,
                  int max_time_to_need_fertilizing, char sprite);
     void new_stage(GrowingObject& obj) override;
+    GrowthStateType get_type() override { return GrowthStateType::Growing; }
 };
 class ReadyState : public GrowthState {
   public:
     ReadyState(char sprite);
-    bool update(GrowingObject& obj) override;
+    UpdateResult update(GrowingObject& obj) override;
+    GrowthStateType get_type() override { return GrowthStateType::Ready; }
 };
 
 class DryingState : public GrowthState {
   public:
+    struct PrevState {
+        GrowthStateType type = GrowthStateType::Planted;
+        int grow_iteration = 0;
+    };
+
     DryingState(int min_time_to_need_watering, int max_time_to_need_watering,
-                char sprite);
-    bool update(GrowingObject& obj) override;
+                char sprite, DryingState::PrevState prev_state);
+    UpdateResult update(GrowingObject& obj) override;
+    GrowthStateType get_type() override { return GrowthStateType::Drying; }
     void watering(GrowingObject& obj) override;
+
+    PrevState prev_state;
 };
 
 class RottenState : public GrowthState {
   public:
     RottenState(char sprite);
-    bool update(GrowingObject& obj) override;
+    UpdateResult update(GrowingObject& obj) override;
+    GrowthStateType get_type() override { return GrowthStateType::Rotten; }
 };
-
-using GrowthStatePtr = std::unique_ptr<GrowthState>;
 
 class GrowthStateFactory {
   public:
@@ -391,16 +425,45 @@ class GrowthStateFactory {
     virtual GrowthStatePtr create_planted() const = 0;
     virtual GrowthStatePtr create_growing() const = 0;
     virtual GrowthStatePtr create_ready() const = 0;
-    virtual GrowthStatePtr create_drying() const = 0;
+    virtual GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const = 0;
     virtual GrowthStatePtr create_rotten() const = 0;
 };
 
-class VegetableStateFactory : public GrowthStateFactory {
+class PotatoStateFactory : public GrowthStateFactory {
   public:
     GrowthStatePtr create_planted() const override;
     GrowthStatePtr create_growing() const override;
     GrowthStatePtr create_ready() const override;
-    GrowthStatePtr create_drying() const override;
+    GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const override;
+    GrowthStatePtr create_rotten() const override;
+};
+class CarrotStateFactory : public GrowthStateFactory {
+  public:
+    GrowthStatePtr create_planted() const override;
+    GrowthStatePtr create_growing() const override;
+    GrowthStatePtr create_ready() const override;
+    GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const override;
+    GrowthStatePtr create_rotten() const override;
+};
+class CucumberStateFactory : public GrowthStateFactory {
+  public:
+    GrowthStatePtr create_planted() const override;
+    GrowthStatePtr create_growing() const override;
+    GrowthStatePtr create_ready() const override;
+    GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const override;
+    GrowthStatePtr create_rotten() const override;
+};
+class TomatoStateFactory : public GrowthStateFactory {
+  public:
+    GrowthStatePtr create_planted() const override;
+    GrowthStatePtr create_growing() const override;
+    GrowthStatePtr create_ready() const override;
+    GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const override;
     GrowthStatePtr create_rotten() const override;
 };
 
@@ -409,7 +472,8 @@ class FlowerStateFactory : public GrowthStateFactory {
     GrowthStatePtr create_planted() const override;
     GrowthStatePtr create_growing() const override;
     GrowthStatePtr create_ready() const override;
-    GrowthStatePtr create_drying() const override;
+    GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const override;
     GrowthStatePtr create_rotten() const override;
 };
 
@@ -418,7 +482,8 @@ class TreeStateFactory : public GrowthStateFactory {
     GrowthStatePtr create_planted() const override;
     GrowthStatePtr create_growing() const override;
     GrowthStatePtr create_ready() const override;
-    GrowthStatePtr create_drying() const override;
+    GrowthStatePtr create_drying(
+        DryingState::PrevState prev_state) const override;
     GrowthStatePtr create_rotten() const override;
 };
 
@@ -429,9 +494,10 @@ class GrowingObject : public EntityObject {
     virtual const GrowthStateFactory& get_factory() const = 0;
     void set_new_state(GrowthStatePtr state);
     std::vector<PlayerActionTypes> get_available_actions() override;
-    bool update() override;
+    UpdateResult update() override;
     void watering();
     void fertilizing();
+    virtual std::unique_ptr<GrowingObject> create_seed() = 0;
 
     int grow_iteration;
 
@@ -439,14 +505,65 @@ class GrowingObject : public EntityObject {
     GrowthStatePtr state;
 };
 
-class Vegetable : public GrowingObject {
+class Potato : public GrowingObject {
   public:
-    static const VegetableStateFactory state_factory;
-    Vegetable();
-    Vegetable(GrowthStatePtr state);
+    static const PotatoStateFactory state_factory;
+    Potato();
+    Potato(GrowthStatePtr state);
     const GrowthStateFactory& get_factory() const override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap get_required_resources() override;
+    std::unique_ptr<GrowingObject> create_seed() override;
 
   private:
+    static const ResourceMap required_resources;
+};
+class Carrot : public GrowingObject {
+  public:
+    static const CarrotStateFactory state_factory;
+    Carrot();
+    Carrot(GrowthStatePtr state);
+    const GrowthStateFactory& get_factory() const override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap get_required_resources() override;
+    std::unique_ptr<GrowingObject> create_seed() override;
+
+  private:
+    static const ResourceMap required_resources;
+};
+class Cucumber : public GrowingObject {
+  public:
+    static const CucumberStateFactory state_factory;
+    Cucumber();
+    Cucumber(GrowthStatePtr state);
+    const GrowthStateFactory& get_factory() const override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap get_required_resources() override;
+    std::unique_ptr<GrowingObject> create_seed() override;
+
+  private:
+    static const ResourceMap required_resources;
+};
+class Tomato : public GrowingObject {
+  public:
+    static const TomatoStateFactory state_factory;
+    Tomato();
+    Tomato(GrowthStatePtr state);
+    const GrowthStateFactory& get_factory() const override;
+    ResourceMap get_resources() override;
+    static const ResourceMap& get_required_resources_static();
+    static bool check_resources(ResourceMap& resources);
+    const ResourceMap get_required_resources() override;
+    std::unique_ptr<GrowingObject> create_seed() override;
+
+  private:
+    static const ResourceMap required_resources;
 };
 class Flower : public GrowingObject {
   public:
@@ -458,6 +575,7 @@ class Flower : public GrowingObject {
     static const ResourceMap& get_required_resources_static();
     static bool check_resources(ResourceMap& resources);
     const ResourceMap get_required_resources() override;
+    std::unique_ptr<GrowingObject> create_seed() override;
 
   private:
     static const ResourceMap required_resources;
@@ -472,6 +590,7 @@ class Tree : public GrowingObject {
     static const ResourceMap& get_required_resources_static();
     static bool check_resources(ResourceMap& resources);
     const ResourceMap get_required_resources() override;
+    std::unique_ptr<GrowingObject> create_seed() override;
 
   private:
     static const ResourceMap required_resources;

@@ -52,6 +52,8 @@ class Map {
     void redraw(Point p);
     void redraw_all();
 
+    void try_place_seed(int x, int y);
+
     std::vector<PlayerActionTypes> get_available_action(int x, int y);
     std::vector<BuildingTypes> get_available_buildings(int x, int y);
 

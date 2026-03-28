@@ -5,6 +5,8 @@ A small collection of classic games implemented in C++ for the terminal.
 1) Connect Four — A two-player connection game where you drop discs to form a line of four.
 2) Bulls and Cows - A single-player game where you guess a secret number.
 3) Car Racing - A single-player racing game.
+4) My Garden - A one-player console game where you can grow plants and design a garden.
+5) Password Hacker - A one-player console game where you need to find a complex password.
 
 # Contributing
 If you have a simple console-based game written in C++, feel free to add it to this collection!

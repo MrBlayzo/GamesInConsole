@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.14)
+project(PasswordHacker LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+get_filename_component(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../common" ABSOLUTE)
+add_subdirectory(${COMMON_DIR}/ConsoleEngine ConsoleEngine)
+add_subdirectory(${COMMON_DIR}/RandomGenerator RandomGenerator)
+
+add_executable(PasswordHacker main.cpp Game.cpp Menu.cpp)
+
+target_link_libraries(PasswordHacker PRIVATE ConsoleEngine)
+target_link_libraries(PasswordHacker PRIVATE RandomGenerator)

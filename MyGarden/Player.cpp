@@ -49,6 +49,7 @@ void PlayerAction::execute() {
 bool PlayerAction::executed() { return is_executed; }
 
 void DigAction::finish() {
+    if(!map.get(pos.x, pos.y).entity) return;
     for (auto& [res, count] : map.get(pos.x, pos.y).entity->get_resources()) {
         player.resources[res] += count;
     }
@@ -56,6 +57,7 @@ void DigAction::finish() {
     map.redraw(pos.x, pos.y);
 }
 void DestroyAction::finish() {
+    if(!map.get(pos.x, pos.y).entity) return;
     for (auto& [res, count] : map.get(pos.x, pos.y).entity->get_resources()) {
         player.resources[res] += count;
     }
@@ -112,6 +114,7 @@ void DropResourcesAction::finish() {
 }
 void GetResourcesFromDumpAction::finish() {
     auto dump = dynamic_cast<Dump*>(map.get(pos.x, pos.y).entity.get());
+    if(!dump) return;
     int count_all = 0;
     for (auto& [res, count] : resources) {
         player.resources[res] += count;
@@ -121,10 +124,12 @@ void GetResourcesFromDumpAction::finish() {
     if (count_all <= 0) map.reset_entity(pos.x, pos.y);
 }
 void WateringAction::finish() {
+    if(!map.get(pos.x, pos.y).entity) return;
     player.resources[ResourceTypes::Water] -= 1;
     dynamic_cast<GrowingObject*>(map.get(pos).entity.get())->watering();
 }
 void FertilizingAction::finish() {
+    if(!map.get(pos.x, pos.y).entity) return;
     player.resources[ResourceTypes::Fertilizer] -= 1;
     dynamic_cast<GrowingObject*>(map.get(pos).entity.get())->fertilizing();
 }
@@ -326,6 +331,18 @@ void Player::new_place_action() {
     if (Flower::check_resources(resources)) {
         place_menu_options.emplace_back("Flower", "Flower");
     }
+    if (Potato::check_resources(resources)) {
+        place_menu_options.emplace_back("Potato", "Potato");
+    }
+    if (Carrot::check_resources(resources)) {
+        place_menu_options.emplace_back("Carrot", "Carrot");
+    }
+    if (Cucumber::check_resources(resources)) {
+        place_menu_options.emplace_back("Cucumber", "Cucumber");
+    }
+    if (Tomato::check_resources(resources)) {
+        place_menu_options.emplace_back("Tomato", "Tomato");
+    }
     if (Tree::check_resources(resources)) {
         place_menu_options.emplace_back("Tree", "Tree");
     }
@@ -339,6 +356,18 @@ void Player::new_place_action() {
     if (place_menu_options[chose_object.value()].param == "Flower")
         active_action = std::make_unique<PlaceAction>(
             map, *this, cursor_pos, std::make_unique<Flower>());
+    else if (place_menu_options[chose_object.value()].param == "Potato")
+        active_action = std::make_unique<PlaceAction>(
+            map, *this, cursor_pos, std::make_unique<Potato>());
+    else if (place_menu_options[chose_object.value()].param == "Carrot")
+        active_action = std::make_unique<PlaceAction>(
+            map, *this, cursor_pos, std::make_unique<Carrot>());
+    else if (place_menu_options[chose_object.value()].param == "Cucumber")
+        active_action = std::make_unique<PlaceAction>(
+            map, *this, cursor_pos, std::make_unique<Cucumber>());
+    else if (place_menu_options[chose_object.value()].param == "Tomato")
+        active_action = std::make_unique<PlaceAction>(
+            map, *this, cursor_pos, std::make_unique<Tomato>());
     else if (place_menu_options[chose_object.value()].param == "Tree")
         active_action = std::make_unique<PlaceAction>(map, *this, cursor_pos,
                                                       std::make_unique<Tree>());
